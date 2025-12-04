@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UNO-like Card Game</title>
+  <title>Online UNO Room</title>
+  <script src="/socket.io/socket.io.js"></script>
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -31,10 +32,57 @@
       letter-spacing: 1px;
     }
 
+    .top-bar {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    input {
+      border-radius: 999px;
+      border: 1px solid #4b5563;
+      background: #111827;
+      color: #f9fafb;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    input::placeholder {
+      color: #6b7280;
+    }
+
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 8px 16px;
+      background: #3b82f6;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      background: #2563eb;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
     #status {
       text-align: center;
       margin-bottom: 12px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       min-height: 1.5em;
     }
 
@@ -70,31 +118,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    button {
-      border-radius: 999px;
-      border: none;
-      padding: 8px 16px;
-      background: #3b82f6;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease;
-    }
-
-    button:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-      background: #2563eb;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: default;
-      box-shadow: none;
-      transform: none;
     }
 
     .hand {
@@ -188,9 +211,11 @@
       opacity: 0.75;
     }
 
-    #newGameBtn {
-      display: block;
-      margin: 12px auto 0;
+    .info-line {
+      text-align: center;
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-bottom: 8px;
     }
 
     @media (max-width: 700px) {
@@ -208,13 +233,25 @@
 </head>
 <body>
   <div class="game">
-    <h1>UNO-like Card Game</h1>
+    <h1>Online UNO (2-Player)</h1>
+
+    <div class="top-bar">
+      <button id="createRoomBtn">Create Room</button>
+      <input id="roomInput" placeholder="Room code" />
+      <button id="joinRoomBtn">Join Room</button>
+    </div>
+
+    <div class="info-line">
+      Room: <span id="roomCodeLabel">—</span> |
+      You: <span id="youAreLabel">—</span>
+    </div>
+
     <div id="status"></div>
 
     <div class="board">
       <div class="pile">
         <div class="pile-title">Draw pile</div>
-        <button id="drawButton">Draw card</button>
+        <button id="drawButton" disabled>Draw card</button>
         <div id="deckCount"></div>
       </div>
 
@@ -224,116 +261,41 @@
       </div>
     </div>
 
-    <div class="hand cpu-hand">
+    <div class="hand opponent-hand">
       <h2>
-        CPU Hand
-        <span>(<span id="cpuCount">0</span> cards)</span>
+        Opponent Hand
+        <span>(<span id="opponentCount">0</span> cards)</span>
       </h2>
-      <div id="cpuCards" class="cards-row"></div>
+      <div id="opponentCards" class="cards-row"></div>
     </div>
 
     <div class="hand player-hand">
       <h2>Your Hand</h2>
       <div id="playerCards" class="cards-row"></div>
     </div>
-
-    <button id="newGameBtn">New Game</button>
   </div>
 
   <script>
-    // ---- Game state ----
-    let deck = [];
-    let discardPile = [];
-    let playerHand = [];
-    let cpuHand = [];
-    let currentPlayer = "player";
-    let isGameOver = false;
+    const socket = io();
 
-    // ---- Setup ----
-    function createDeck() {
-      const colors = ["red", "yellow", "green", "blue"];
-      const newDeck = [];
+    let currentRoomCode = null;
+    let currentTurn = null;
+    let mySocketId = null;
 
-      colors.forEach((color) => {
-        // One zero per color
-        newDeck.push({ color, value: 0, type: "number" });
+    const statusEl = document.getElementById("status");
+    const roomCodeLabel = document.getElementById("roomCodeLabel");
+    const youAreLabel = document.getElementById("youAreLabel");
+    const deckCountEl = document.getElementById("deckCount");
+    const discardTopEl = document.getElementById("discardTop");
+    const playerCardsEl = document.getElementById("playerCards");
+    const opponentCardsEl = document.getElementById("opponentCards");
+    const opponentCountEl = document.getElementById("opponentCount");
+    const drawButton = document.getElementById("drawButton");
 
-        // Two of each 1–9 per color
-        for (let v = 1; v <= 9; v++) {
-          newDeck.push({ color, value: v, type: "number" });
-          newDeck.push({ color, value: v, type: "number" });
-        }
-
-        // Two Skips, Reverses, +2 per color
-        ["skip", "reverse", "draw2"].forEach((action) => {
-          newDeck.push({ color, value: null, type: action });
-          newDeck.push({ color, value: null, type: action });
-        });
-      });
-
-      return newDeck;
+    function showMessage(msg) {
+      statusEl.textContent = msg || "";
     }
 
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-    }
-
-    function drawOne() {
-      // Recycle discard pile if needed
-      if (deck.length === 0) {
-        if (discardPile.length <= 1) return null; // no cards left at all
-        const top = discardPile.pop();
-        deck = discardPile;
-        discardPile = [top];
-        shuffle(deck);
-      }
-      return deck.pop();
-    }
-
-    function drawCards(target, count) {
-      for (let i = 0; i < count; i++) {
-        const card = drawOne();
-        if (!card) return;
-        if (target === "player") {
-          playerHand.push(card);
-        } else {
-          cpuHand.push(card);
-        }
-      }
-    }
-
-    function canPlay(card, top) {
-      if (!card || !top) return false;
-
-      // Match color
-      if (card.color === top.color) return true;
-
-      // Match number
-      if (card.type === "number" && top.type === "number" && card.value === top.value)
-        return true;
-
-      // Match action type
-      if (card.type !== "number" && card.type === top.type) return true;
-
-      return false;
-    }
-
-    function describeCard(card) {
-      if (card.type === "number") return `${card.color} ${card.value}`;
-      if (card.type === "draw2") return `${card.color} +2`;
-      const name = card.type === "skip" ? "Skip" : "Reverse";
-      return `${card.color} ${name}`;
-    }
-
-    function showMessage(text) {
-      const statusEl = document.getElementById("status");
-      statusEl.textContent = text;
-    }
-
-    // ---- Rendering ----
     function renderCard(card) {
       const el = document.createElement("div");
       el.classList.add("card", card.color);
@@ -357,216 +319,101 @@
       return el;
     }
 
-    function updateUI() {
-      const deckCountEl = document.getElementById("deckCount");
-      const discardTopEl = document.getElementById("discardTop");
-      const playerCardsEl = document.getElementById("playerCards");
-      const cpuCardsEl = document.getElementById("cpuCards");
-      const cpuCountEl = document.getElementById("cpuCount");
-      const drawButton = document.getElementById("drawButton");
+    function updateUI(state) {
+      if (!state) return;
 
-      deckCountEl.textContent = `${deck.length} card${deck.length === 1 ? "" : "s"} left`;
+      currentRoomCode = state.roomCode;
+      currentTurn = state.currentTurn;
 
-      // Discard top
+      roomCodeLabel.textContent = state.roomCode || "—";
+      youAreLabel.textContent = state.youAre || "—";
+
+      deckCountEl.textContent = state.deckCount != null
+        ? `${state.deckCount} card${state.deckCount === 1 ? "" : "s"} left`
+        : "";
+
       discardTopEl.innerHTML = "";
-      const top = discardPile[discardPile.length - 1];
-      if (top) {
-        const topCardEl = renderCard(top);
+      if (state.discardTop) {
+        const topCardEl = renderCard(state.discardTop);
         discardTopEl.appendChild(topCardEl);
       }
 
       // Player hand
       playerCardsEl.innerHTML = "";
-      playerHand.forEach((card, index) => {
+      (state.yourHand || []).forEach((card) => {
         const cardEl = renderCard(card);
         cardEl.classList.add("player-card");
-        cardEl.dataset.index = index;
-        cardEl.addEventListener("click", () => onPlayerCardClick(index));
+        cardEl.addEventListener("click", () => {
+          if (!currentRoomCode) return;
+          socket.emit("playCard", { roomCode: currentRoomCode, cardId: card.id });
+        });
         playerCardsEl.appendChild(cardEl);
       });
 
-      // CPU hand (hidden, just backs)
-      cpuCardsEl.innerHTML = "";
-      cpuHand.forEach(() => {
+      // Opponent (backs only)
+      opponentCardsEl.innerHTML = "";
+      const oppCount = state.opponentCardCount || 0;
+      opponentCountEl.textContent = oppCount.toString();
+      for (let i = 0; i < oppCount; i++) {
         const backEl = document.createElement("div");
         backEl.classList.add("card", "back");
         backEl.textContent = "UNO";
-        cpuCardsEl.appendChild(backEl);
-      });
-
-      cpuCountEl.textContent = cpuHand.length.toString();
-
-      drawButton.disabled = currentPlayer !== "player" || isGameOver;
-    }
-
-    // ---- Turn / flow logic ----
-    function checkWin() {
-      if (playerHand.length === 0) {
-        isGameOver = true;
-        showMessage("You win!");
-      } else if (cpuHand.length === 0) {
-        isGameOver = true;
-        showMessage("CPU wins!");
+        opponentCardsEl.appendChild(backEl);
       }
-    }
 
-    function handleEndOfTurnEffects(card, playedBy) {
-      if (isGameOver) return;
+      const isMyTurn = currentTurn === mySocketId;
+      drawButton.disabled = !isMyTurn || state.isGameOver;
 
-      const isAction =
-        card.type === "skip" || card.type === "reverse" || card.type === "draw2";
-
-      if (isAction) {
-        const victim = playedBy === "player" ? "cpu" : "player";
-
-        if (card.type === "draw2") {
-          drawCards(victim, 2);
-        }
-
-        if (victim === "player") {
-          showMessage("You were skipped!");
-        } else {
-          showMessage("CPU was skipped!");
-        }
-
-        // With 2 players: action cards make the same player go again
-        if (playedBy === "cpu") {
-          updateUI();
-          setTimeout(cpuTurn, 600);
-        } else {
-          currentPlayer = "player";
-          updateUI();
-        }
+      if (state.isGameOver) {
+        const youWon = state.winner === mySocketId;
+        showMessage(youWon ? "You win!" : "Opponent wins.");
+      } else if (!currentTurn) {
+        showMessage(state.message || "Waiting for players...");
+      } else if (isMyTurn) {
+        showMessage("Your turn");
       } else {
-        // Normal card: pass turn
-        currentPlayer = playedBy === "player" ? "cpu" : "player";
-        if (currentPlayer === "cpu") {
-          updateUI();
-          setTimeout(cpuTurn, 600);
-        } else {
-          showMessage("Your turn");
-          updateUI();
-        }
+        showMessage("Opponent's turn");
       }
     }
 
-    // ---- Player actions ----
-    function onPlayerCardClick(index) {
-      if (isGameOver || currentPlayer !== "player") return;
+    // Buttons
+    document.getElementById("createRoomBtn").addEventListener("click", () => {
+      socket.emit("createRoom");
+    });
 
-      const top = discardPile[discardPile.length - 1];
-      const card = playerHand[index];
-
-      if (!canPlay(card, top)) {
-        showMessage("You can't play that card. Choose another or draw.");
+    document.getElementById("joinRoomBtn").addEventListener("click", () => {
+      const code = document.getElementById("roomInput").value.trim();
+      if (!code) {
+        showMessage("Enter a room code first.");
         return;
       }
+      socket.emit("joinRoom", { roomCode: code });
+    });
 
-      const played = playerHand.splice(index, 1)[0];
-      discardPile.push(played);
+    drawButton.addEventListener("click", () => {
+      if (!currentRoomCode) return;
+      socket.emit("drawCard", { roomCode: currentRoomCode });
+    });
 
-      showMessage("You played " + describeCard(played));
-      checkWin();
-      updateUI();
-      if (isGameOver) return;
+    // Socket events
+    socket.on("connect", () => {
+      mySocketId = socket.id;
+    });
 
-      handleEndOfTurnEffects(played, "player");
-    }
+    socket.on("roomCreated", ({ roomCode, youAre }) => {
+      currentRoomCode = roomCode;
+      roomCodeLabel.textContent = roomCode;
+      youAreLabel.textContent = youAre;
+      showMessage(`Room created. Share code: ${roomCode}`);
+    });
 
-    function onDrawClick() {
-      if (isGameOver || currentPlayer !== "player") return;
+    socket.on("gameState", (state) => {
+      updateUI(state);
+    });
 
-      const drawn = drawOne();
-      if (!drawn) {
-        showMessage("No cards left to draw!");
-        return;
-      }
-
-      playerHand.push(drawn);
-      updateUI();
-
-      const top = discardPile[discardPile.length - 1];
-
-      if (canPlay(drawn, top)) {
-        showMessage("You drew a playable card. Click it to play.");
-      } else {
-        showMessage("No playable card. CPU's turn.");
-        currentPlayer = "cpu";
-        setTimeout(cpuTurn, 600);
-      }
-    }
-
-    // ---- CPU logic ----
-    function cpuTurn() {
-      if (isGameOver || currentPlayer !== "cpu") return;
-
-      const top = discardPile[discardPile.length - 1];
-
-      // Find first playable card
-      let playableIndex = cpuHand.findIndex((card) => canPlay(card, top));
-
-      if (playableIndex === -1) {
-        // Draw one
-        const drawn = drawOne();
-        if (drawn) cpuHand.push(drawn);
-        updateUI();
-
-        if (drawn && canPlay(drawn, top)) {
-          playableIndex = cpuHand.length - 1;
-        } else {
-          showMessage("CPU drew a card and couldn't play.");
-          currentPlayer = "player";
-          showMessage("Your turn");
-          updateUI();
-          return;
-        }
-      }
-
-      // Play the card
-      const played = cpuHand.splice(playableIndex, 1)[0];
-      discardPile.push(played);
-      showMessage("CPU played " + describeCard(played));
-      checkWin();
-      updateUI();
-      if (isGameOver) return;
-
-      handleEndOfTurnEffects(played, "cpu");
-    }
-
-    // ---- Game lifecycle ----
-    function startGame() {
-      deck = createDeck();
-      shuffle(deck);
-      discardPile = [];
-      playerHand = [];
-      cpuHand = [];
-      isGameOver = false;
-      currentPlayer = "player";
-
-      // Deal 7 cards each
-      for (let i = 0; i < 7; i++) {
-        playerHand.push(drawOne());
-        cpuHand.push(drawOne());
-      }
-
-      // Flip first card to start discard pile
-      let first = drawOne();
-      if (!first) {
-        // Should never happen, but just in case
-        first = { color: "red", value: 0, type: "number" };
-      }
-      discardPile.push(first);
-
-      showMessage("Your turn");
-      updateUI();
-    }
-
-    // ---- Event listeners ----
-    document.getElementById("drawButton").addEventListener("click", onDrawClick);
-    document.getElementById("newGameBtn").addEventListener("click", startGame);
-
-    // Start immediately
-    startGame();
+    socket.on("errorMessage", (msg) => {
+      showMessage(msg);
+    });
   </script>
 </body>
 </html>
