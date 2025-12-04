@@ -194,7 +194,13 @@
     }
 
     .card.wild {
-      background: radial-gradient(circle at 10% 20%, #ef4444 0, #eab308 30%, #22c55e 60%, #3b82f6 100%);
+      background: radial-gradient(
+        circle at 10% 20%,
+        #ef4444 0,
+        #eab308 30%,
+        #22c55e 60%,
+        #3b82f6 100%
+      );
       border-color: #f9fafb;
     }
 
@@ -226,8 +232,42 @@
     .uno-row {
       display: flex;
       justify-content: center;
-      margin-bottom: 16px;
+      margin-bottom: 8px;
       gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .color-picker {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+
+    .color-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: 2px solid #f9fafb;
+      padding: 0;
+    }
+
+    .color-btn.red {
+      background: #ef4444;
+    }
+
+    .color-btn.yellow {
+      background: #eab308;
+    }
+
+    .color-btn.green {
+      background: #22c55e;
+    }
+
+    .color-btn.blue {
+      background: #3b82f6;
     }
 
     @media (max-width: 700px) {
@@ -277,6 +317,14 @@
       <button id="unoButton" disabled>Yell UNO!</button>
     </div>
 
+    <div id="colorPicker" class="color-picker">
+      <span>Choose color:</span>
+      <button class="color-btn red" data-color="red" title="Red"></button>
+      <button class="color-btn yellow" data-color="yellow" title="Yellow"></button>
+      <button class="color-btn green" data-color="green" title="Green"></button>
+      <button class="color-btn blue" data-color="blue" title="Blue"></button>
+    </div>
+
     <div class="hand opponent-hand">
       <h2>
         Opponent Hand
@@ -297,6 +345,7 @@
     let currentRoomCode = null;
     let currentTurn = null;
     let mySocketId = null;
+    let pendingWildCardId = null;
 
     const statusEl = document.getElementById("status");
     const roomCodeLabel = document.getElementById("roomCodeLabel");
@@ -308,6 +357,8 @@
     const opponentCountEl = document.getElementById("opponentCount");
     const drawButton = document.getElementById("drawButton");
     const unoButton = document.getElementById("unoButton");
+    const colorPicker = document.getElementById("colorPicker");
+    const colorButtons = document.querySelectorAll(".color-btn");
 
     function showMessage(msg) {
       statusEl.textContent = msg || "";
@@ -348,8 +399,16 @@
       return el;
     }
 
+    function hideColorPicker() {
+      colorPicker.style.display = "none";
+      pendingWildCardId = null;
+    }
+
     function updateUI(state) {
       if (!state) return;
+
+      // Reset any leftover color picker on state update
+      hideColorPicker();
 
       currentRoomCode = state.roomCode;
       currentTurn = state.currentTurn;
@@ -377,22 +436,18 @@
         cardEl.addEventListener("click", () => {
           if (!currentRoomCode) return;
 
-          let chosenColor = null;
+          // Wild cards use color picker
           if (card.type === "wild" || card.type === "wild4") {
-            chosenColor = prompt("Choose a color: red, yellow, green, or blue");
-            if (!chosenColor) return;
-            chosenColor = chosenColor.trim().toLowerCase();
-            const valid = ["red", "yellow", "green", "blue"];
-            if (!valid.includes(chosenColor)) {
-              alert("Invalid color. Try again.");
-              return;
-            }
+            pendingWildCardId = card.id;
+            colorPicker.style.display = "flex";
+            return;
           }
 
+          // Normal cards play immediately
           socket.emit("playCard", {
             roomCode: currentRoomCode,
             cardId: card.id,
-            chosenColor,
+            chosenColor: null,
           });
         });
         playerCardsEl.appendChild(cardEl);
@@ -412,8 +467,11 @@
       const isMyTurn = currentTurn === mySocketId;
       drawButton.disabled = !isMyTurn || state.isGameOver;
 
-      // Enable UNO button if you have 2 or fewer cards, it's your turn, and game not over
-      if (!state.isGameOver && myHand.length <= 2 && isMyTurn && myHand.length > 0) {
+      // Enable UNO button if:
+      // - game not over
+      // - your hand has 2 or fewer cards but > 0
+      // - it's your turn
+      if (!state.isGameOver && myHand.length <= 2 && myHand.length > 0 && isMyTurn) {
         unoButton.disabled = false;
       } else {
         unoButton.disabled = true;
@@ -453,6 +511,22 @@
     unoButton.addEventListener("click", () => {
       if (!currentRoomCode) return;
       socket.emit("yellUno", { roomCode: currentRoomCode });
+    });
+
+    // Color picker buttons for wilds
+    colorButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const color = btn.dataset.color;
+        if (!currentRoomCode || !pendingWildCardId) return;
+
+        socket.emit("playCard", {
+          roomCode: currentRoomCode,
+          cardId: pendingWildCardId,
+          chosenColor: color,
+        });
+
+        hideColorPicker();
+      });
     });
 
     // Socket events
