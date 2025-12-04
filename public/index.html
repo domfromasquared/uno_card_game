@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Online UNO Room</title>
+  <title>Online UNO (2-Player)</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     body {
@@ -193,6 +193,11 @@
       background: #3b82f6;
     }
 
+    .card.wild {
+      background: radial-gradient(circle at 10% 20%, #ef4444 0, #eab308 30%, #22c55e 60%, #3b82f6 100%);
+      border-color: #f9fafb;
+    }
+
     .card.back {
       background: linear-gradient(135deg, #111827, #020617);
       border-color: #e5e7eb;
@@ -216,6 +221,13 @@
       font-size: 0.9rem;
       opacity: 0.8;
       margin-bottom: 8px;
+    }
+
+    .uno-row {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+      gap: 8px;
     }
 
     @media (max-width: 700px) {
@@ -261,6 +273,10 @@
       </div>
     </div>
 
+    <div class="uno-row">
+      <button id="unoButton" disabled>Yell UNO!</button>
+    </div>
+
     <div class="hand opponent-hand">
       <h2>
         Opponent Hand
@@ -291,6 +307,7 @@
     const opponentCardsEl = document.getElementById("opponentCards");
     const opponentCountEl = document.getElementById("opponentCount");
     const drawButton = document.getElementById("drawButton");
+    const unoButton = document.getElementById("unoButton");
 
     function showMessage(msg) {
       statusEl.textContent = msg || "";
@@ -298,7 +315,15 @@
 
     function renderCard(card) {
       const el = document.createElement("div");
-      el.classList.add("card", card.color);
+
+      // Decide color class
+      let colorClass = card.color;
+      if ((card.type === "wild" || card.type === "wild4") && !card.color) {
+        colorClass = "wild";
+      }
+
+      el.classList.add("card");
+      if (colorClass) el.classList.add(colorClass);
       if (card.type !== "number") el.classList.add("action");
 
       let label;
@@ -310,6 +335,10 @@
         label = "Reverse";
       } else if (card.type === "draw2") {
         label = "+2";
+      } else if (card.type === "wild") {
+        label = "Wild";
+      } else if (card.type === "wild4") {
+        label = "W+4";
       }
 
       const span = document.createElement("span");
@@ -328,9 +357,10 @@
       roomCodeLabel.textContent = state.roomCode || "—";
       youAreLabel.textContent = state.youAre || "—";
 
-      deckCountEl.textContent = state.deckCount != null
-        ? `${state.deckCount} card${state.deckCount === 1 ? "" : "s"} left`
-        : "";
+      deckCountEl.textContent =
+        state.deckCount != null
+          ? `${state.deckCount} card${state.deckCount === 1 ? "" : "s"} left`
+          : "";
 
       discardTopEl.innerHTML = "";
       if (state.discardTop) {
@@ -340,12 +370,30 @@
 
       // Player hand
       playerCardsEl.innerHTML = "";
-      (state.yourHand || []).forEach((card) => {
+      const myHand = state.yourHand || [];
+      myHand.forEach((card) => {
         const cardEl = renderCard(card);
         cardEl.classList.add("player-card");
         cardEl.addEventListener("click", () => {
           if (!currentRoomCode) return;
-          socket.emit("playCard", { roomCode: currentRoomCode, cardId: card.id });
+
+          let chosenColor = null;
+          if (card.type === "wild" || card.type === "wild4") {
+            chosenColor = prompt("Choose a color: red, yellow, green, or blue");
+            if (!chosenColor) return;
+            chosenColor = chosenColor.trim().toLowerCase();
+            const valid = ["red", "yellow", "green", "blue"];
+            if (!valid.includes(chosenColor)) {
+              alert("Invalid color. Try again.");
+              return;
+            }
+          }
+
+          socket.emit("playCard", {
+            roomCode: currentRoomCode,
+            cardId: card.id,
+            chosenColor,
+          });
         });
         playerCardsEl.appendChild(cardEl);
       });
@@ -364,15 +412,22 @@
       const isMyTurn = currentTurn === mySocketId;
       drawButton.disabled = !isMyTurn || state.isGameOver;
 
+      // Enable UNO button if you have 2 or fewer cards, it's your turn, and game not over
+      if (!state.isGameOver && myHand.length <= 2 && isMyTurn && myHand.length > 0) {
+        unoButton.disabled = false;
+      } else {
+        unoButton.disabled = true;
+      }
+
       if (state.isGameOver) {
         const youWon = state.winner === mySocketId;
         showMessage(youWon ? "You win!" : "Opponent wins.");
       } else if (!currentTurn) {
         showMessage(state.message || "Waiting for players...");
       } else if (isMyTurn) {
-        showMessage("Your turn");
+        showMessage(state.message || "Your turn");
       } else {
-        showMessage("Opponent's turn");
+        showMessage(state.message || "Opponent's turn");
       }
     }
 
@@ -393,6 +448,11 @@
     drawButton.addEventListener("click", () => {
       if (!currentRoomCode) return;
       socket.emit("drawCard", { roomCode: currentRoomCode });
+    });
+
+    unoButton.addEventListener("click", () => {
+      if (!currentRoomCode) return;
+      socket.emit("yellUno", { roomCode: currentRoomCode });
     });
 
     // Socket events
