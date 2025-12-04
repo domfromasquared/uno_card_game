@@ -24,6 +24,7 @@
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
       max-width: 900px;
       width: 100%;
+      transition: transform 0.2s ease;
     }
 
     h1 {
@@ -270,6 +271,35 @@
       background: #3b82f6;
     }
 
+    /* Wild +4 impact animation */
+    @keyframes wild4Shake {
+      0% {
+        transform: translate(0, 0) scale(1);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      20% {
+        transform: translate(-4px, 2px) scale(1.02);
+        box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7);
+      }
+      40% {
+        transform: translate(4px, -2px) scale(1.03);
+      }
+      60% {
+        transform: translate(-3px, 1px) scale(1.02);
+      }
+      80% {
+        transform: translate(3px, -1px) scale(1.01);
+      }
+      100% {
+        transform: translate(0, 0) scale(1);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    .wild4-impact {
+      animation: wild4Shake 0.5s ease;
+    }
+
     @media (max-width: 700px) {
       .board {
         flex-direction: column;
@@ -351,6 +381,7 @@
     let pendingWildCardId = null;
     let lastGameOver = false;
     let lastWinner = null;
+    let lastWild4CardId = null;
 
     const statusEl = document.getElementById("status");
     const roomCodeLabel = document.getElementById("roomCodeLabel");
@@ -365,6 +396,7 @@
     const colorPicker = document.getElementById("colorPicker");
     const colorButtons = document.querySelectorAll(".color-btn");
     const victorySound = document.getElementById("victorySound");
+    const gameEl = document.querySelector(".game");
 
     function showMessage(msg) {
       statusEl.textContent = msg || "";
@@ -419,12 +451,23 @@
         if (victorySound) {
           victorySound.currentTime = 0;
           victorySound.play().catch(() => {
-            // autoplay might be blocked until user interacts, but that's fine
+            // autoplay might be blocked; that's fine
           });
         }
       }
       lastGameOver = state.isGameOver;
       lastWinner = state.winner || null;
+    }
+
+    function triggerWild4Effect() {
+      if (!gameEl) return;
+      gameEl.classList.remove("wild4-impact");
+      // Force reflow so animation can restart
+      void gameEl.offsetWidth;
+      gameEl.classList.add("wild4-impact");
+      setTimeout(() => {
+        gameEl.classList.remove("wild4-impact");
+      }, 600);
     }
 
     function updateUI(state) {
@@ -448,6 +491,18 @@
       if (state.discardTop) {
         const topCardEl = renderCard(state.discardTop);
         discardTopEl.appendChild(topCardEl);
+
+        // Detect new Wild +4 on top and trigger effect
+        if (state.discardTop.type === "wild4") {
+          if (state.discardTop.id !== lastWild4CardId) {
+            lastWild4CardId = state.discardTop.id;
+            triggerWild4Effect();
+          }
+        } else {
+          lastWild4CardId = null;
+        }
+      } else {
+        lastWild4CardId = null;
       }
 
       // Player hand
