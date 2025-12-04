@@ -95,13 +95,46 @@ function describeCard(card) {
   return `${card.color} ${name}`;
 }
 
-function dealInitialCards(room) {
+// Turn timer: skip if player takes too long
+function setTurnTimer(roomCode) {
+  const room = rooms[roomCode];
+  if (!room) return;
+
+  // Clear any old timer
+  if (room.turnTimeout) {
+    clearTimeout(room.turnTimeout);
+    room.turnTimeout = null;
+  }
+
+  if (!room.currentTurn || room.isGameOver) return;
+
+  const playerToTimeout = room.currentTurn;
+
+  room.turnTimeout = setTimeout(() => {
+    const r = rooms[roomCode];
+    if (!r || r.isGameOver) return;
+
+    // If turn already moved, don't double-skip
+    if (r.currentTurn !== playerToTimeout) return;
+
+    const other = r.players.find((id) => id && id !== playerToTimeout);
+    r.message = "Player took too long. Turn skipped.";
+    r.currentTurn = other || playerToTimeout;
+    r.turnTimeout = null;
+    sendGameState(roomCode);
+    // Start timer for the next player
+    setTurnTimer(roomCode);
+  }, 20000); // 20 seconds
+}
+
+function dealInitialCards(room, roomCode) {
   room.deck = createDeck();
   shuffle(room.deck);
   room.discardPile = [];
   room.isGameOver = false;
   room.winner = null;
   room.unoStatus = room.unoStatus || {};
+  room.specialEffect = null;
 
   // make sure hands exist
   room.players.forEach((pid) => {
@@ -128,6 +161,7 @@ function dealInitialCards(room) {
   const starterIndex = Math.random() < 0.5 ? 0 : 1;
   room.currentTurn = room.players[starterIndex];
   room.message = "Game started!";
+  setTurnTimer(roomCode);
 }
 
 function sendGameState(roomCode) {
@@ -163,7 +197,7 @@ function sendGameState(roomCode) {
 
 // Apply UNO penalty if needed.
 // Called right after a card is removed from hand but before win check.
-function maybeApplyUnoPenalty(room, roomCode, playerId, hand, beforePenaltyCount) {
+function maybeApplyUnoPenalty(room, playerId, hand, beforePenaltyCount) {
   const unoCalled = !!room.unoStatus[playerId];
   room.unoStatus[playerId] = false; // consume UNO if it was called
 
@@ -200,6 +234,8 @@ io.on("connection", (socket) => {
       winner: null,
       message: "Waiting for another player to join...",
       unoStatus: {}, // playerId -> bool
+      specialEffect: null,
+      turnTimeout: null,
     };
 
     socket.join(code);
@@ -222,7 +258,7 @@ io.on("connection", (socket) => {
     room.message = "Both players connected. Dealing cards...";
     socket.join(roomCode);
 
-    dealInitialCards(room);
+    dealInitialCards(room, roomCode);
     sendGameState(roomCode);
   });
 
@@ -268,14 +304,26 @@ io.on("connection", (socket) => {
     // Put on discard pile
     room.discardPile.push(card);
 
+    // Reset special effect unless this is a wild4
+    room.specialEffect = null;
+    if (card.type === "wild4") {
+      room.specialEffect = "wild4";
+    }
+
     // UNO penalty check
-    maybeApplyUnoPenalty(room, roomCode, socket.id, hand, beforePenaltyCount);
+    maybeApplyUnoPenalty(room, socket.id, hand, beforePenaltyCount);
 
     // Win check AFTER possible penalty
     if (hand.length === 0) {
       room.isGameOver = true;
       room.winner = socket.id;
       room.message = "Game over!";
+
+      if (room.turnTimeout) {
+        clearTimeout(room.turnTimeout);
+        room.turnTimeout = null;
+      }
+
       sendGameState(roomCode);
       return;
     }
@@ -313,6 +361,7 @@ io.on("connection", (socket) => {
 
     room.message = `Player played ${describeCard(card)}`;
     sendGameState(roomCode);
+    setTurnTimer(roomCode);
   });
 
   socket.on("drawCard", ({ roomCode }) => {
@@ -326,6 +375,7 @@ io.on("connection", (socket) => {
 
     // Drawing cancels any previous UNO call
     room.unoStatus[socket.id] = false;
+    room.specialEffect = null;
 
     const drawn = drawOne(room);
     if (!drawn) {
@@ -356,13 +406,19 @@ io.on("connection", (socket) => {
       room.discardPile.push(drawn);
 
       // UNO penalty check for auto-play
-      maybeApplyUnoPenalty(room, roomCode, socket.id, hand, beforePenaltyCount);
+      maybeApplyUnoPenalty(room, socket.id, hand, beforePenaltyCount);
 
       // Win check
       if (hand.length === 0) {
         room.isGameOver = true;
         room.winner = socket.id;
         room.message = "Game over!";
+
+        if (room.turnTimeout) {
+          clearTimeout(room.turnTimeout);
+          room.turnTimeout = null;
+        }
+
         sendGameState(roomCode);
         return;
       }
@@ -392,6 +448,7 @@ io.on("connection", (socket) => {
       }
 
       sendGameState(roomCode);
+      setTurnTimer(roomCode);
       return;
     }
 
@@ -401,6 +458,7 @@ io.on("connection", (socket) => {
     room.currentTurn = other || socket.id;
 
     sendGameState(roomCode);
+    setTurnTimer(roomCode);
   });
 
   // YELL UNO: must be at 2 or fewer cards; applies to the NEXT card play only.
@@ -428,6 +486,12 @@ io.on("connection", (socket) => {
       if (room.players.includes(socket.id)) {
         room.message = "Opponent disconnected. Game over.";
         room.isGameOver = true;
+
+        if (room.turnTimeout) {
+          clearTimeout(room.turnTimeout);
+          room.turnTimeout = null;
+        }
+
         sendGameState(code);
         delete rooms[code];
       }
