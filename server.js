@@ -1,4 +1,4 @@
-// Simple UNO-like online server using Express + Socket.IO
+// UNO-like online server using Express + Socket.IO
 
 const express = require("express");
 const http = require("http");
@@ -9,17 +9,18 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve files from /public (your index.html is here)
 app.use(express.static(path.join(__dirname, "public")));
 
-// ---- GAME STATE ----
 const rooms = {}; // roomCode -> state
+
+// ---- DECK / RULES ----
 
 function createDeck() {
   const colors = ["red", "yellow", "green", "blue"];
   const deck = [];
   let idCounter = 1;
 
+  // Normal colored cards
   colors.forEach((color) => {
     // One zero per color
     deck.push({ id: idCounter++, color, value: 0, type: "number" });
@@ -36,6 +37,12 @@ function createDeck() {
       deck.push({ id: idCounter++, color, value: null, type: action });
     });
   });
+
+  // Wild + Wild Draw 4 (no color yet)
+  for (let i = 0; i < 4; i++) {
+    deck.push({ id: idCounter++, color: null, value: null, type: "wild" });
+    deck.push({ id: idCounter++, color: null, value: null, type: "wild4" });
+  }
 
   return deck;
 }
@@ -61,6 +68,9 @@ function drawOne(room) {
 function canPlay(card, top) {
   if (!card || !top) return false;
 
+  // Wilds are always playable
+  if (card.type === "wild" || card.type === "wild4") return true;
+
   // same color
   if (card.color === top.color) return true;
 
@@ -79,6 +89,8 @@ function describeCard(card) {
   if (!card) return "";
   if (card.type === "number") return `${card.color} ${card.value}`;
   if (card.type === "draw2") return `${card.color} +2`;
+  if (card.type === "wild") return `Wild (${card.color || "no color"})`;
+  if (card.type === "wild4") return `Wild +4 (${card.color || "no color"})`;
   const name = card.type === "skip" ? "Skip" : "Reverse";
   return `${card.color} ${name}`;
 }
@@ -104,7 +116,7 @@ function dealInitialCards(room) {
     });
   }
 
-  // first discard card
+  // first discard card (must not be a wild ideally, but we'll keep it simple)
   let first = drawOne(room);
   if (!first) {
     first = { id: 9999, color: "red", value: 0, type: "number" };
@@ -149,6 +161,7 @@ function sendGameState(roomCode) {
 }
 
 // ---- SOCKET LOGIC ----
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
@@ -194,7 +207,7 @@ io.on("connection", (socket) => {
     sendGameState(roomCode);
   });
 
-  socket.on("playCard", ({ roomCode, cardId }) => {
+  socket.on("playCard", ({ roomCode, cardId, chosenColor }) => {
     const room = rooms[roomCode];
     if (!room || room.isGameOver) return;
 
@@ -213,16 +226,28 @@ io.on("connection", (socket) => {
     const card = hand[index];
     const top = room.discardPile[room.discardPile.length - 1];
 
-    if (!canPlay(card, top)) {
-      socket.emit("errorMessage", "You can't play that card.");
-      return;
+    // Wild / Wild +4: always playable, but must choose a color
+    if (card.type === "wild" || card.type === "wild4") {
+      const validColors = ["red", "yellow", "green", "blue"];
+      if (!chosenColor || !validColors.includes(chosenColor)) {
+        socket.emit("errorMessage", "You must choose a color for a wild card.");
+        return;
+      }
+      card.color = chosenColor;
+    } else {
+      // Normal cards must match something
+      if (!canPlay(card, top)) {
+        socket.emit("errorMessage", "You can't play that card.");
+        return;
+      }
     }
 
+    // Remove from hand, add to discard
     hand.splice(index, 1);
     room.discardPile.push(card);
     room.message = `Player played ${describeCard(card)}`;
 
-    // win?
+    // Win check
     if (hand.length === 0) {
       room.isGameOver = true;
       room.winner = socket.id;
@@ -231,24 +256,37 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const isAction =
-      card.type === "skip" || card.type === "reverse" || card.type === "draw2";
+    const opponentId = room.players.find((id) => id && id !== socket.id);
 
-    if (isAction) {
-      // action hits opponent
-      const opponentId = room.players.find((id) => id && id !== socket.id);
-      if (card.type === "draw2" && opponentId) {
-        for (let i = 0; i < 2; i++) {
-          const drawn = drawOne(room);
-          if (drawn) room.hands[opponentId].push(drawn);
-        }
+    // Action effects
+    if (card.type === "draw2" && opponentId) {
+      for (let i = 0; i < 2; i++) {
+        const drawn = drawOne(room);
+        if (drawn) room.hands[opponentId].push(drawn);
       }
-      // same player goes again
+    }
+
+    if (card.type === "wild4" && opponentId) {
+      for (let i = 0; i < 4; i++) {
+        const drawn = drawOne(room);
+        if (drawn) room.hands[opponentId].push(drawn);
+      }
+    }
+
+    // Who goes next?
+    // In this 2-player simplification:
+    // - Skip, Reverse, Draw2, Wild4  => same player goes again
+    // - Number, Wild                => other player
+    const turnAgain =
+      card.type === "skip" ||
+      card.type === "reverse" ||
+      card.type === "draw2" ||
+      card.type === "wild4";
+
+    if (turnAgain) {
       room.currentTurn = socket.id;
     } else {
-      // switch turn
-      const other = room.players.find((id) => id && id !== socket.id);
-      room.currentTurn = other || socket.id;
+      room.currentTurn = opponentId || socket.id;
     }
 
     sendGameState(roomCode);
@@ -274,10 +312,25 @@ io.on("connection", (socket) => {
     room.hands[socket.id].push(drawn);
     room.message = "Player drew a card.";
 
-    // after drawing, pass turn
+    // After drawing, pass turn
     const other = room.players.find((id) => id && id !== socket.id);
     room.currentTurn = other || socket.id;
 
+    sendGameState(roomCode);
+  });
+
+  // YELL UNO (no penalty logic yet, just a broadcast)
+  socket.on("yellUno", ({ roomCode }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    const hand = room.hands[socket.id] || [];
+    if (hand.length > 2) {
+      socket.emit("errorMessage", "You can only yell UNO with 2 or fewer cards.");
+      return;
+    }
+
+    room.message = "UNO! A player yelled UNO!";
     sendGameState(roomCode);
   });
 
