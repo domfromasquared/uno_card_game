@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Online UNO Room</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #16171b;
+      color: #f5f5f5;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .game {
+      background: #1f2127;
+      border-radius: 12px;
+      padding: 20px 24px 28px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      max-width: 900px;
+      width: 100%;
+    }
+
+    h1 {
+      margin-top: 0;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    input {
+      border-radius: 999px;
+      border: 1px solid #4b5563;
+      background: #111827;
+      color: #f9fafb;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    input::placeholder {
+      color: #6b7280;
+    }
+
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 8px 16px;
+      background: #3b82f6;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      background: #2563eb;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
+    #status {
+      text-align: center;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      min-height: 1.5em;
+    }
+
+    .board {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+
+    .pile {
+      text-align: center;
+    }
+
+    .pile-title {
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+
+    #deckCount {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+
+    .card-slot {
+      width: 80px;
+      height: 120px;
+      border-radius: 10px;
+      border: 2px dashed #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hand {
+      margin-bottom: 16px;
+    }
+
+    .hand h2 {
+      margin: 8px 0;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .cards-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 130px;
+      padding: 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .card {
+      width: 70px;
+      height: 100px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.2rem;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      border: 3px solid #f5f5f5;
+      box-sizing: border-box;
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease;
+    }
+
+    .card.player-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+      filter: brightness(1.05);
+    }
+
+    .card .value {
+      text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+    }
+
+    .card.action .value {
+      font-size: 1rem;
+      text-align: center;
+      padding: 0 4px;
+    }
+
+    .card.red {
+      background: #ef4444;
+    }
+
+    .card.yellow {
+      background: #eab308;
+      color: #111827;
+    }
+
+    .card.green {
+      background: #22c55e;
+    }
+
+    .card.blue {
+      background: #3b82f6;
+    }
+
+    .card.back {
+      background: linear-gradient(135deg, #111827, #020617);
+      border-color: #e5e7eb;
+      color: #e5e7eb;
+      font-size: 1rem;
+      letter-spacing: 1px;
+      cursor: default;
+    }
+
+    .card.back::before {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 8px;
+      border: 2px solid #e5e7eb;
+      opacity: 0.75;
+    }
+
+    .info-line {
+      text-align: center;
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 700px) {
+      .board {
+        flex-direction: column;
+        gap: 16px;
+      }
+      .card {
+        width: 58px;
+        height: 85px;
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="game">
+    <h1>Online UNO (2-Player)</h1>
+
+    <div class="top-bar">
+      <button id="createRoomBtn">Create Room</button>
+      <input id="roomInput" placeholder="Room code" />
+      <button id="joinRoomBtn">Join Room</button>
+    </div>
+
+    <div class="info-line">
+      Room: <span id="roomCodeLabel">—</span> |
+      You: <span id="youAreLabel">—</span>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="board">
+      <div class="pile">
+        <div class="pile-title">Draw pile</div>
+        <button id="drawButton" disabled>Draw card</button>
+        <div id="deckCount"></div>
+      </div>
+
+      <div class="pile">
+        <div class="pile-title">Discard pile</div>
+        <div id="discardTop" class="card-slot"></div>
+      </div>
+    </div>
+
+    <div class="hand opponent-hand">
+      <h2>
+        Opponent Hand
+        <span>(<span id="opponentCount">0</span> cards)</span>
+      </h2>
+      <div id="opponentCards" class="cards-row"></div>
+    </div>
+
+    <div class="hand player-hand">
+      <h2>Your Hand</h2>
+      <div id="playerCards" class="cards-row"></div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    let currentRoomCode = null;
+    let currentTurn = null;
+    let mySocketId = null;
+
+    const statusEl = document.getElementById("status");
+    const roomCodeLabel = document.getElementById("roomCodeLabel");
+    const youAreLabel = document.getElementById("youAreLabel");
+    const deckCountEl = document.getElementById("deckCount");
+    const discardTopEl = document.getElementById("discardTop");
+    const playerCardsEl = document.getElementById("playerCards");
+    const opponentCardsEl = document.getElementById("opponentCards");
+    const opponentCountEl = document.getElementById("opponentCount");
+    const drawButton = document.getElementById("drawButton");
+
+    function showMessage(msg) {
+      statusEl.textContent = msg || "";
+    }
+
+    function renderCard(card) {
+      const el = document.createElement("div");
+      el.classList.add("card", card.color);
+      if (card.type !== "number") el.classList.add("action");
+
+      let label;
+      if (card.type === "number") {
+        label = card.value;
+      } else if (card.type === "skip") {
+        label = "Skip";
+      } else if (card.type === "reverse") {
+        label = "Reverse";
+      } else if (card.type === "draw2") {
+        label = "+2";
+      }
+
+      const span = document.createElement("span");
+      span.classList.add("value");
+      span.textContent = label;
+      el.appendChild(span);
+      return el;
+    }
+
+    function updateUI(state) {
+      if (!state) return;
+
+      currentRoomCode = state.roomCode;
+      currentTurn = state.currentTurn;
+
+      roomCodeLabel.textContent = state.roomCode || "—";
+      youAreLabel.textContent = state.youAre || "—";
+
+      deckCountEl.textContent = state.deckCount != null
+        ? `${state.deckCount} card${state.deckCount === 1 ? "" : "s"} left`
+        : "";
+
+      discardTopEl.innerHTML = "";
+      if (state.discardTop) {
+        const topCardEl = renderCard(state.discardTop);
+        discardTopEl.appendChild(topCardEl);
+      }
+
+      // Player hand
+      playerCardsEl.innerHTML = "";
+      (state.yourHand || []).forEach((card) => {
+        const cardEl = renderCard(card);
+        cardEl.classList.add("player-card");
+        cardEl.addEventListener("click", () => {
+          if (!currentRoomCode) return;
+          socket.emit("playCard", { roomCode: currentRoomCode, cardId: card.id });
+        });
+        playerCardsEl.appendChild(cardEl);
+      });
+
+      // Opponent (backs only)
+      opponentCardsEl.innerHTML = "";
+      const oppCount = state.opponentCardCount || 0;
+      opponentCountEl.textContent = oppCount.toString();
+      for (let i = 0; i < oppCount; i++) {
+        const backEl = document.createElement("div");
+        backEl.classList.add("card", "back");
+        backEl.textContent = "UNO";
+        opponentCardsEl.appendChild(backEl);
+      }
+
+      const isMyTurn = currentTurn === mySocketId;
+      drawButton.disabled = !isMyTurn || state.isGameOver;
+
+      if (state.isGameOver) {
+        const youWon = state.winner === mySocketId;
+        showMessage(youWon ? "You win!" : "Opponent wins.");
+      } else if (!currentTurn) {
+        showMessage(state.message || "Waiting for players...");
+      } else if (isMyTurn) {
+        showMessage("Your turn");
+      } else {
+        showMessage("Opponent's turn");
+      }
+    }
+
+    // Buttons
+    document.getElementById("createRoomBtn").addEventListener("click", () => {
+      socket.emit("createRoom");
+    });
+
+    document.getElementById("joinRoomBtn").addEventListener("click", () => {
+      const code = document.getElementById("roomInput").value.trim();
+      if (!code) {
+        showMessage("Enter a room code first.");
+        return;
+      }
+      socket.emit("joinRoom", { roomCode: code });
+    });
+
+    drawButton.addEventListener("click", () => {
+      if (!currentRoomCode) return;
+      socket.emit("drawCard", { roomCode: currentRoomCode });
+    });
+
+    // Socket events
+    socket.on("connect", () => {
+      mySocketId = socket.id;
+    });
+
+    socket.on("roomCreated", ({ roomCode, youAre }) => {
+      currentRoomCode = roomCode;
+      roomCodeLabel.textContent = roomCode;
+      youAreLabel.textContent = youAre;
+      showMessage(`Room created. Share code: ${roomCode}`);
+    });
+
+    socket.on("gameState", (state) => {
+      updateUI(state);
+    });
+
+    socket.on("errorMessage", (msg) => {
+      showMessage(msg);
+    });
+  </script>
+</body>
+</html>
