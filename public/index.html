@@ -82,9 +82,43 @@
 
     #status {
       text-align: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       font-size: 0.95rem;
       min-height: 1.5em;
+    }
+
+    /* TURN TIMER BAR */
+    #turnTimerBar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    #turnTimerBox {
+      min-width: 220px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: #111827;
+      border: 2px solid #f97316;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    #turnTimerLabel {
+      opacity: 0.8;
+    }
+
+    #turnTimerValue {
+      font-size: 1.2rem;
+    }
+
+    #turnTimerValue.danger {
+      color: #f97316;
     }
 
     .board {
@@ -227,7 +261,7 @@
       text-align: center;
       font-size: 0.9rem;
       opacity: 0.8;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
 
     .uno-row {
@@ -330,6 +364,14 @@
 
     <div id="status"></div>
 
+    <!-- PROMINENT TURN TIMER -->
+    <div id="turnTimerBar">
+      <div id="turnTimerBox">
+        <span id="turnTimerLabel">Turn timer</span>
+        <span id="turnTimerValue">--</span>
+      </div>
+    </div>
+
     <div class="board">
       <div class="pile">
         <div class="pile-title">Draw pile</div>
@@ -383,6 +425,11 @@
     let lastWinner = null;
     let lastWild4CardId = null;
 
+    // Timer state
+    let turnSecondsRemaining = null;
+    let turnTimerInterval = null;
+    let lastTurnKey = null; // roomCode + currentTurn combo to detect new turns
+
     const statusEl = document.getElementById("status");
     const roomCodeLabel = document.getElementById("roomCodeLabel");
     const youAreLabel = document.getElementById("youAreLabel");
@@ -397,6 +444,7 @@
     const colorButtons = document.querySelectorAll(".color-btn");
     const victorySound = document.getElementById("victorySound");
     const gameEl = document.querySelector(".game");
+    const timerValueEl = document.getElementById("turnTimerValue");
 
     function showMessage(msg) {
       statusEl.textContent = msg || "";
@@ -468,6 +516,59 @@
       setTimeout(() => {
         gameEl.classList.remove("wild4-impact");
       }, 600);
+    }
+
+    // ---- TURN TIMER UI LOGIC ----
+    function stopTurnTimer() {
+      if (turnTimerInterval) {
+        clearInterval(turnTimerInterval);
+        turnTimerInterval = null;
+      }
+      turnSecondsRemaining = null;
+      if (timerValueEl) {
+        timerValueEl.textContent = "--";
+        timerValueEl.classList.remove("danger");
+      }
+    }
+
+    function startTurnTimerForState(state) {
+      if (!timerValueEl) return;
+
+      if (state.isGameOver || !state.currentTurn) {
+        stopTurnTimer();
+        return;
+      }
+
+      const key = `${state.roomCode || ""}|${state.currentTurn}`;
+      if (key === lastTurnKey && turnSecondsRemaining !== null) {
+        // Same turn, keep counting
+        return;
+      }
+
+      lastTurnKey = key;
+      stopTurnTimer();
+      turnSecondsRemaining = 20;
+      timerValueEl.textContent = "20s";
+      timerValueEl.classList.remove("danger");
+
+      turnTimerInterval = setInterval(() => {
+        if (turnSecondsRemaining === null) return;
+        turnSecondsRemaining--;
+        if (turnSecondsRemaining <= 0) {
+          turnSecondsRemaining = 0;
+          timerValueEl.textContent = "0s";
+          timerValueEl.classList.add("danger");
+          clearInterval(turnTimerInterval);
+          turnTimerInterval = null;
+        } else {
+          timerValueEl.textContent = `${turnSecondsRemaining}s`;
+          if (turnSecondsRemaining <= 5) {
+            timerValueEl.classList.add("danger");
+          } else {
+            timerValueEl.classList.remove("danger");
+          }
+        }
+      }, 1000);
     }
 
     function updateUI(state) {
@@ -565,6 +666,9 @@
       } else {
         showMessage(state.message || "Opponent's turn");
       }
+
+      // Start / update the visual timer
+      startTurnTimerForState(state);
     }
 
     // Buttons
