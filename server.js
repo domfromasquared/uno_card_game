@@ -101,6 +101,7 @@ function dealInitialCards(room) {
   room.discardPile = [];
   room.isGameOver = false;
   room.winner = null;
+  room.unoStatus = room.unoStatus || {};
 
   // make sure hands exist
   room.players.forEach((pid) => {
@@ -116,7 +117,7 @@ function dealInitialCards(room) {
     });
   }
 
-  // first discard card (must not be a wild ideally, but we'll keep it simple)
+  // first discard card
   let first = drawOne(room);
   if (!first) {
     first = { id: 9999, color: "red", value: 0, type: "number" };
@@ -160,6 +161,23 @@ function sendGameState(roomCode) {
   });
 }
 
+// Apply UNO penalty if needed.
+// Called right after a card is removed from hand but before win check.
+function maybeApplyUnoPenalty(room, roomCode, playerId, hand, beforePenaltyCount) {
+  const unoCalled = !!room.unoStatus[playerId];
+  room.unoStatus[playerId] = false; // consume UNO if it was called
+
+  // They just went down to 1 card (from 2 to 1) and DIDN'T call UNO
+  if (beforePenaltyCount === 1 && !unoCalled) {
+    const penaltyCards = 2;
+    for (let i = 0; i < penaltyCards; i++) {
+      const penaltyCard = drawOne(room);
+      if (penaltyCard) hand.push(penaltyCard);
+    }
+    room.message = "Penalty! You did not yell UNO. You draw 2 cards.";
+  }
+}
+
 // ---- SOCKET LOGIC ----
 
 io.on("connection", (socket) => {
@@ -181,6 +199,7 @@ io.on("connection", (socket) => {
       isGameOver: false,
       winner: null,
       message: "Waiting for another player to join...",
+      unoStatus: {}, // playerId -> bool
     };
 
     socket.join(code);
@@ -226,7 +245,7 @@ io.on("connection", (socket) => {
     const card = hand[index];
     const top = room.discardPile[room.discardPile.length - 1];
 
-    // Wild / Wild +4: always playable, but must choose a color
+    // Wild / Wild +4: require color
     if (card.type === "wild" || card.type === "wild4") {
       const validColors = ["red", "yellow", "green", "blue"];
       if (!chosenColor || !validColors.includes(chosenColor)) {
@@ -242,12 +261,17 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Remove from hand, add to discard
+    // Remove from hand
     hand.splice(index, 1);
-    room.discardPile.push(card);
-    room.message = `Player played ${describeCard(card)}`;
+    const beforePenaltyCount = hand.length; // cards LEFT after playing
 
-    // Win check
+    // Put on discard pile
+    room.discardPile.push(card);
+
+    // UNO penalty check
+    maybeApplyUnoPenalty(room, roomCode, socket.id, hand, beforePenaltyCount);
+
+    // Win check AFTER possible penalty
     if (hand.length === 0) {
       room.isGameOver = true;
       room.winner = socket.id;
@@ -256,6 +280,7 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Opponent for action effects
     const opponentId = room.players.find((id) => id && id !== socket.id);
 
     // Action effects
@@ -274,9 +299,6 @@ io.on("connection", (socket) => {
     }
 
     // Who goes next?
-    // In this 2-player simplification:
-    // - Skip, Reverse, Draw2, Wild4  => same player goes again
-    // - Number, Wild                => other player
     const turnAgain =
       card.type === "skip" ||
       card.type === "reverse" ||
@@ -289,6 +311,7 @@ io.on("connection", (socket) => {
       room.currentTurn = opponentId || socket.id;
     }
 
+    room.message = `Player played ${describeCard(card)}`;
     sendGameState(roomCode);
   });
 
@@ -301,6 +324,9 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Drawing cancels any previous UNO call
+    room.unoStatus[socket.id] = false;
+
     const drawn = drawOne(room);
     if (!drawn) {
       room.message = "No cards left to draw.";
@@ -309,17 +335,75 @@ io.on("connection", (socket) => {
     }
 
     room.hands[socket.id] = room.hands[socket.id] || [];
-    room.hands[socket.id].push(drawn);
-    room.message = "Player drew a card.";
+    const hand = room.hands[socket.id];
+    hand.push(drawn);
 
-    // After drawing, pass turn
+    const top = room.discardPile[room.discardPile.length - 1];
+
+    // AUTO-PLAY LOGIC:
+    // If the drawn card is playable AND not a wild/wild4, auto-play it.
+    const canAutoPlay =
+      drawn.type !== "wild" && drawn.type !== "wild4" && canPlay(drawn, top);
+
+    if (canAutoPlay) {
+      // Remove it back from hand and treat like a play
+      const idx = hand.findIndex((c) => c.id === drawn.id);
+      if (idx !== -1) {
+        hand.splice(idx, 1);
+      }
+      const beforePenaltyCount = hand.length;
+
+      room.discardPile.push(drawn);
+
+      // UNO penalty check for auto-play
+      maybeApplyUnoPenalty(room, roomCode, socket.id, hand, beforePenaltyCount);
+
+      // Win check
+      if (hand.length === 0) {
+        room.isGameOver = true;
+        room.winner = socket.id;
+        room.message = "Game over!";
+        sendGameState(roomCode);
+        return;
+      }
+
+      const opponentId = room.players.find((id) => id && id !== socket.id);
+
+      // Action effects for auto-played card
+      if (drawn.type === "draw2" && opponentId) {
+        for (let i = 0; i < 2; i++) {
+          const extra = drawOne(room);
+          if (extra) room.hands[opponentId].push(extra);
+        }
+      }
+
+      // skip / reverse / draw2 give another turn
+      const turnAgain =
+        drawn.type === "skip" ||
+        drawn.type === "reverse" ||
+        drawn.type === "draw2";
+
+      if (turnAgain) {
+        room.currentTurn = socket.id;
+        room.message = `You drew and auto-played ${describeCard(drawn)}. You go again.`;
+      } else {
+        room.currentTurn = opponentId || socket.id;
+        room.message = `You drew and auto-played ${describeCard(drawn)}.`;
+      }
+
+      sendGameState(roomCode);
+      return;
+    }
+
+    // If we didn't auto-play (wild or not playable), pass turn like before
+    room.message = "Player drew a card.";
     const other = room.players.find((id) => id && id !== socket.id);
     room.currentTurn = other || socket.id;
 
     sendGameState(roomCode);
   });
 
-  // YELL UNO (no penalty logic yet, just a broadcast)
+  // YELL UNO: must be at 2 or fewer cards; applies to the NEXT card play only.
   socket.on("yellUno", ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return;
@@ -330,6 +414,7 @@ io.on("connection", (socket) => {
       return;
     }
 
+    room.unoStatus[socket.id] = true;
     room.message = "UNO! A player yelled UNO!";
     sendGameState(roomCode);
   });
