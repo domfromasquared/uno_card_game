@@ -337,6 +337,9 @@
       <h2>Your Hand</h2>
       <div id="playerCards" class="cards-row"></div>
     </div>
+
+    <!-- Victory sound -->
+    <audio id="victorySound" src="awesome.mp3" preload="auto"></audio>
   </div>
 
   <script>
@@ -346,6 +349,8 @@
     let currentTurn = null;
     let mySocketId = null;
     let pendingWildCardId = null;
+    let lastGameOver = false;
+    let lastWinner = null;
 
     const statusEl = document.getElementById("status");
     const roomCodeLabel = document.getElementById("roomCodeLabel");
@@ -359,6 +364,7 @@
     const unoButton = document.getElementById("unoButton");
     const colorPicker = document.getElementById("colorPicker");
     const colorButtons = document.querySelectorAll(".color-btn");
+    const victorySound = document.getElementById("victorySound");
 
     function showMessage(msg) {
       statusEl.textContent = msg || "";
@@ -402,6 +408,23 @@
     function hideColorPicker() {
       colorPicker.style.display = "none";
       pendingWildCardId = null;
+    }
+
+    function handleVictorySound(state) {
+      if (
+        state.isGameOver &&
+        state.winner &&
+        (!lastGameOver || state.winner !== lastWinner)
+      ) {
+        if (victorySound) {
+          victorySound.currentTime = 0;
+          victorySound.play().catch(() => {
+            // autoplay might be blocked until user interacts, but that's fine
+          });
+        }
+      }
+      lastGameOver = state.isGameOver;
+      lastWinner = state.winner || null;
     }
 
     function updateUI(state) {
@@ -543,6 +566,7 @@
 
     socket.on("gameState", (state) => {
       updateUI(state);
+      handleVictorySound(state);
     });
 
     socket.on("errorMessage", (msg) => {
