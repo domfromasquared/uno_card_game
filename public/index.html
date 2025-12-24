@@ -14,7 +14,6 @@
       --bad:#ef4444;
       --blue:#3b82f6;
     }
-
     body{
       font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       background: var(--bg);
@@ -26,7 +25,6 @@
       min-height:100vh;
       padding:20px;
     }
-
     .game{
       position:relative;
       background:var(--panel);
@@ -38,19 +36,15 @@
       overflow:hidden;
       transition:transform 0.2s ease;
     }
-
     h1{margin-top:0;text-align:center;letter-spacing:1px;}
-
     .top-bar{
       display:flex;justify-content:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;
     }
-
     input{
       border-radius:999px;border:1px solid #4b5563;background:#111827;color:#f9fafb;
       padding:8px 12px;font-size:0.9rem;outline:none;
     }
     input::placeholder{color:#6b7280;}
-
     button{
       border-radius:999px;border:none;padding:8px 16px;background:var(--blue);color:white;
       font-weight:900;cursor:pointer;font-size:0.9rem;
@@ -66,13 +60,12 @@
     .info-line{
       text-align:center;font-size:0.92rem;opacity:0.85;margin-bottom:6px;
     }
-
     #status{
       text-align:center;margin-bottom:8px;font-size:0.98rem;min-height:1.5em;
       color:rgba(255,255,255,0.92);
     }
 
-    /* BIG TURN BANNER */
+    /* TURN BANNER */
     #turnBannerWrap{display:flex;justify-content:center;margin-bottom:10px;}
     #turnBanner{
       padding:10px 16px;border-radius:999px;font-weight:1000;letter-spacing:0.5px;
@@ -93,7 +86,7 @@
       100%{ box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
     }
 
-    /* PROMINENT TURN TIMER */
+    /* TIMER */
     #turnTimerBar{display:flex;justify-content:center;align-items:center;margin-bottom:14px;}
     #turnTimerBox{
       min-width:260px;padding:10px 18px;border-radius:999px;background:#111827;
@@ -103,7 +96,6 @@
     #turnTimerLabel{opacity:0.85;}
     #turnTimerValue{font-size:1.25rem;letter-spacing:0.5px;}
     #turnTimerValue.danger{color:var(--accent);}
-
     .turn-you #turnTimerBox{border-color: rgba(34,197,94,0.95);animation: pulseBorder 1.2s infinite;}
     .turn-opp #turnTimerBox{border-color: rgba(239,68,68,0.95);}
     @keyframes pulseBorder{
@@ -118,7 +110,6 @@
     .pile{text-align:center;}
     .pile-title{margin-bottom:6px;font-size:0.9rem;opacity:0.75;}
     #deckCount{font-size:0.82rem;opacity:0.7;margin-top:6px;}
-
     .card-slot{
       width:90px;height:130px;border-radius:12px;border:2px dashed #444;
       display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.02);
@@ -126,21 +117,13 @@
 
     .hand{margin-bottom:16px;}
     .hand h2{margin:10px 0 8px;font-size:1rem;display:flex;align-items:center;justify-content:space-between;}
-
-    /* Hand highlight frames */
     .hand-frame{
       border-radius:14px;padding:10px;border:2px solid rgba(255,255,255,0.08);
       background: rgba(255,255,255,0.015);
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .hand-frame.active-you{
-      border-color: rgba(34,197,94,0.55);
-      box-shadow: 0 0 0 6px rgba(34,197,94,0.10);
-    }
-    .hand-frame.active-opp{
-      border-color: rgba(239,68,68,0.50);
-      box-shadow: 0 0 0 6px rgba(239,68,68,0.10);
-    }
+    .hand-frame.active-you{border-color: rgba(34,197,94,0.55);box-shadow: 0 0 0 6px rgba(34,197,94,0.10);}
+    .hand-frame.active-opp{border-color: rgba(239,68,68,0.50);box-shadow: 0 0 0 6px rgba(239,68,68,0.10);}
 
     .cards-row{
       display:flex;flex-wrap:wrap;gap:8px;min-height:130px;padding:10px;border-radius:12px;
@@ -153,27 +136,22 @@
       border:3px solid #f5f5f5;box-sizing:border-box;position:relative;user-select:none;
       transition:transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease, opacity 0.15s ease;
     }
-
     .card.player-card{cursor:pointer;}
     .card.player-card:hover{
       transform:translateY(-4px);
       box-shadow:0 8px 16px rgba(0,0,0,0.6);
       filter:brightness(1.05);
     }
-
     .card .value{text-shadow:0 2px 3px rgba(0,0,0,0.6);}
     .card.action .value{font-size:0.95rem;text-align:center;padding:0 4px;}
-
     .card.red{background:#ef4444;}
     .card.yellow{background:#eab308;color:#111827;}
     .card.green{background:#22c55e;}
     .card.blue{background:#3b82f6;}
-
     .card.wild{
       background: radial-gradient(circle at 10% 20%, #ef4444 0, #eab308 30%, #22c55e 60%, #3b82f6 100%);
       border-color:#f9fafb;
     }
-
     .card.back{
       background: linear-gradient(135deg, #111827, #020617);
       border-color:#e5e7eb;color:#e5e7eb;font-size:1rem;letter-spacing:1px;cursor:default;
@@ -197,7 +175,6 @@
     .color-btn.green{background:#22c55e;}
     .color-btn.blue{background:#3b82f6;}
 
-    /* Wild +4 shake */
     @keyframes wild4Shake{
       0%{transform:translate(0,0) scale(1);}
       20%{transform:translate(-5px,2px) scale(1.02);}
@@ -208,7 +185,6 @@
     }
     .wild4-impact{animation:wild4Shake 0.55s ease;}
 
-    /* Deal animation layer */
     #dealLayer{position:absolute;inset:0;pointer-events:none;z-index:50;}
     .deal-card{
       position:absolute;width:56px;height:82px;border-radius:10px;
@@ -224,16 +200,18 @@
     }
     .is-dealing{filter:saturate(0.95);}
 
-    /* Sound unlock banner */
+    /* Sound gate (also includes a test button) */
     #soundGate{
       display:none;position:sticky;top:0;z-index:60;margin:0 auto 12px;width:fit-content;
       background: rgba(17,24,39,0.95);border:2px solid var(--accent);border-radius:999px;
       padding:10px 14px;box-shadow:0 10px 25px rgba(0,0,0,0.4);
-      gap:10px;align-items:center;
+      gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;
     }
-    #soundGate span{opacity:0.9;font-weight:1000;}
-    #soundGate button{background:#f97316;}
-    #soundGate button:hover:not(:disabled){background:#ea580c;}
+    #soundGate span{opacity:0.92;font-weight:1000;}
+    #enableSoundBtn{background:#f97316;}
+    #enableSoundBtn:hover:not(:disabled){background:#ea580c;}
+    #testSoundBtn{background:#10b981;}
+    #testSoundBtn:hover:not(:disabled){background:#059669;}
 
     @media (max-width:760px){
       .card{width:58px;height:85px;font-size:1rem;}
@@ -252,6 +230,7 @@
       <button id="createRoomBtn">Create Room</button>
       <input id="roomInput" placeholder="Room code" />
       <button id="joinRoomBtn">Join Room</button>
+      <button id="testSoundTopBtn" title="Quick test">Test Sound 🔊</button>
     </div>
 
     <div class="info-line">
@@ -269,8 +248,9 @@
     </div>
 
     <div id="soundGate">
-      <span>🔊 Sounds are off. Click to enable.</span>
+      <span>🔊 Sounds are OFF. Click Enable Sound (required by browsers).</span>
       <button id="enableSoundBtn">Enable Sound</button>
+      <button id="testSoundBtn">Test Sound</button>
     </div>
 
     <div id="turnTimerBar">
@@ -324,7 +304,7 @@
 
     <div id="dealLayer"></div>
 
-    <!-- Sounds -->
+    <!-- Sounds (must be in /public) -->
     <audio id="soundNewHand" src="new_hand.mp3" preload="auto"></audio>
     <audio id="soundWildImpact" src="wild_impact.mp3" preload="auto"></audio>
     <audio id="soundWin" src="success_1.mp3" preload="auto"></audio>
@@ -358,6 +338,8 @@
       // Sound gate
       const soundGate = document.getElementById("soundGate");
       const enableSoundBtn = document.getElementById("enableSoundBtn");
+      const testSoundBtn = document.getElementById("testSoundBtn");
+      const testSoundTopBtn = document.getElementById("testSoundTopBtn");
 
       // Sounds
       const soundNewHand = document.getElementById("soundNewHand");
@@ -368,18 +350,61 @@
       // Sound control
       let soundEnabled = false;
       soundGate.style.display = "flex";
-      enableSoundBtn.addEventListener("click", () => {
-        soundEnabled = true;
-        soundGate.style.display = "none";
-        [soundNewHand, soundWildImpact, soundWin, soundAwesome].forEach(a => { try { a.load(); } catch {} });
-      });
 
       function playSound(audio){
         if(!soundEnabled) return;
         if(!audio) return;
         audio.currentTime = 0;
-        audio.play().catch(()=>{});
+        audio.play().catch((e)=>{
+          console.log("❌ play() failed:", e);
+        });
       }
+
+      async function unlockAudio(){
+        // Must be called from a user click/tap
+        soundEnabled = true;
+
+        // Attempt the classic unlock: play very quietly then stop.
+        const a = soundNewHand;
+        try{
+          a.volume = 0.001;
+          a.currentTime = 0;
+          await a.play();
+          a.pause();
+          a.currentTime = 0;
+          a.volume = 1.0;
+          console.log("✅ Audio unlocked");
+          return true;
+        } catch(e){
+          console.log("❌ Audio unlock failed:", e);
+          soundEnabled = false;
+          return false;
+        }
+      }
+
+      enableSoundBtn.addEventListener("click", async ()=>{
+        const ok = await unlockAudio();
+        if(ok){
+          soundGate.style.display = "none";
+        } else {
+          alert("Audio is blocked. Check tab mute, system volume, and site permissions.");
+        }
+      });
+
+      async function testSoundFlow(){
+        if(!soundEnabled){
+          const ok = await unlockAudio();
+          if(!ok){
+            alert("Audio blocked. Check tab mute + system volume. Also verify MP3 file paths.");
+            return;
+          }
+        }
+        // Loud obvious sound
+        playSound(soundAwesome);
+      }
+
+      testSoundBtn.addEventListener("click", testSoundFlow);
+      testSoundTopBtn.addEventListener("click", testSoundFlow);
 
       // State
       let currentRoomCode = null;
@@ -403,7 +428,7 @@
       let dealtRevealMy = [];
       let dealtRevealOppCount = 0;
 
-      // Sorting: color then number, then actions, wilds last
+      // Sorting: color then number, actions, wilds last
       const colorOrder = { red:0, yellow:1, green:2, blue:3 };
       const typeOrder  = { number:0, skip:1, reverse:2, draw2:3, wild:4, wild4:5 };
 
@@ -545,13 +570,10 @@
         opponentCountEl.textContent = String(count);
       }
 
-      // ✅ FIX: ALWAYS RENDER YOUR HAND (never depends on turn)
-      // Only clicking depends on turn.
       function renderMyHand(cardsSorted, clickable){
         playerCardsEl.innerHTML = "";
         cardsSorted.forEach((card)=>{
           const el = renderCard(card);
-
           if(clickable){
             el.classList.add("player-card");
             el.addEventListener("click", ()=>{
@@ -566,10 +588,9 @@
               socket.emit("playCard", { roomCode: currentRoomCode, cardId: card.id, chosenColor: null });
             });
           } else {
-            el.style.opacity = "0.9";
+            el.style.opacity = "0.92";
             el.style.cursor = "default";
           }
-
           playerCardsEl.appendChild(el);
         });
       }
@@ -598,6 +619,7 @@
         dealtRevealMy = [];
         dealtRevealOppCount = 0;
 
+        // new game sound happens here too
         playSound(soundNewHand);
 
         const start = getCenter(drawButton);
@@ -645,15 +667,13 @@
           await sleep(70);
           await anim.finished.catch(()=>{});
 
-          // Reveal
+          // Reveal + render immediately
           if(toOpponent){
             dealtRevealOppCount++;
           } else {
             const next = fullMyHandSorted[dealtRevealMy.length];
             if(next) dealtRevealMy.push(next);
           }
-
-          // Update reveal UI immediately
           renderOpponentBacks(dealtRevealOppCount);
           renderMyHand(dealtRevealMy, false);
 
@@ -685,6 +705,7 @@
         if(state.discardTop){
           discardTopEl.appendChild(renderCard(state.discardTop));
 
+          // wild4 impact
           if(state.discardTop.type === "wild4"){
             if(state.discardTop.id !== lastWild4TopId){
               lastWild4TopId = state.discardTop.id;
@@ -744,9 +765,12 @@
         // win sounds
         if(state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)){
           const winningCard = state.discardTop;
+
+          // awesome for both if wild/wild4 won
           if(winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")){
             playSound(soundAwesome);
           }
+          // winner-only success
           if(state.winner === mySocketId){
             playSound(soundWin);
           }
