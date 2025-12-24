@@ -13,7 +13,6 @@
       --good:#22c55e;
       --bad:#ef4444;
       --blue:#3b82f6;
-      --ring: rgba(255,255,255,0.15);
     }
 
     body{
@@ -74,48 +73,20 @@
     }
 
     /* BIG TURN BANNER */
-    #turnBannerWrap{
-      display:flex;
-      justify-content:center;
-      margin-bottom:10px;
-    }
+    #turnBannerWrap{display:flex;justify-content:center;margin-bottom:10px;}
     #turnBanner{
-      padding:10px 16px;
-      border-radius:999px;
-      font-weight:1000;
-      letter-spacing:0.5px;
-      text-transform:uppercase;
-      border:2px solid rgba(255,255,255,0.25);
+      padding:10px 16px;border-radius:999px;font-weight:1000;letter-spacing:0.5px;
+      text-transform:uppercase;border:2px solid rgba(255,255,255,0.25);
       background: rgba(17,24,39,0.75);
       box-shadow:0 10px 24px rgba(0,0,0,0.35);
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width:280px;
-      justify-content:center;
+      display:flex;align-items:center;gap:10px;
+      min-width:280px;justify-content:center;
     }
-    #turnBannerDot{
-      width:10px;height:10px;border-radius:999px;background:#94a3b8;
-      box-shadow:0 0 0 0 rgba(0,0,0,0);
-    }
-    .turn-you #turnBanner{
-      border-color: rgba(34,197,94,0.9);
-      box-shadow: 0 10px 26px rgba(34,197,94,0.15);
-    }
-    .turn-you #turnBannerDot{
-      background: var(--good);
-      animation: pulseDot 1s infinite;
-    }
-
-    .turn-opp #turnBanner{
-      border-color: rgba(239,68,68,0.9);
-      box-shadow: 0 10px 26px rgba(239,68,68,0.15);
-    }
-    .turn-opp #turnBannerDot{
-      background: var(--bad);
-      animation: pulseDot 1s infinite;
-    }
-
+    #turnBannerDot{width:10px;height:10px;border-radius:999px;background:#94a3b8;}
+    .turn-you #turnBanner{border-color: rgba(34,197,94,0.9);}
+    .turn-you #turnBannerDot{background: var(--good);animation: pulseDot 1s infinite;}
+    .turn-opp #turnBanner{border-color: rgba(239,68,68,0.9);}
+    .turn-opp #turnBannerDot{background: var(--bad);animation: pulseDot 1s infinite;}
     @keyframes pulseDot{
       0%{ box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
       50%{ box-shadow: 0 0 0 10px rgba(255,255,255,0.06); }
@@ -125,27 +96,16 @@
     /* PROMINENT TURN TIMER */
     #turnTimerBar{display:flex;justify-content:center;align-items:center;margin-bottom:14px;}
     #turnTimerBox{
-      min-width:260px;
-      padding:10px 18px;
-      border-radius:999px;
-      background:#111827;
-      border:2px solid var(--accent);
-      display:flex;justify-content:space-between;align-items:center;gap:10px;
-      font-weight:1000;font-size:1.05rem;
-      box-shadow:0 8px 20px rgba(0,0,0,0.35);
+      min-width:260px;padding:10px 18px;border-radius:999px;background:#111827;
+      border:2px solid var(--accent);display:flex;justify-content:space-between;align-items:center;gap:10px;
+      font-weight:1000;font-size:1.05rem;box-shadow:0 8px 20px rgba(0,0,0,0.35);
     }
     #turnTimerLabel{opacity:0.85;}
     #turnTimerValue{font-size:1.25rem;letter-spacing:0.5px;}
     #turnTimerValue.danger{color:var(--accent);}
 
-    /* Extra: pulse timer border on YOUR TURN */
-    .turn-you #turnTimerBox{
-      border-color: rgba(34,197,94,0.95);
-      animation: pulseBorder 1.2s infinite;
-    }
-    .turn-opp #turnTimerBox{
-      border-color: rgba(239,68,68,0.95);
-    }
+    .turn-you #turnTimerBox{border-color: rgba(34,197,94,0.95);animation: pulseBorder 1.2s infinite;}
+    .turn-opp #turnTimerBox{border-color: rgba(239,68,68,0.95);}
     @keyframes pulseBorder{
       0%{ box-shadow: 0 0 0 0 rgba(34,197,94,0.12), 0 8px 20px rgba(0,0,0,0.35); }
       50%{ box-shadow: 0 0 0 12px rgba(34,197,94,0.04), 0 8px 20px rgba(0,0,0,0.35); }
@@ -165,24 +125,18 @@
     }
 
     .hand{margin-bottom:16px;}
-    .hand h2{
-      margin:10px 0 8px;font-size:1rem;display:flex;align-items:center;justify-content:space-between;
-    }
+    .hand h2{margin:10px 0 8px;font-size:1rem;display:flex;align-items:center;justify-content:space-between;}
 
     /* Hand highlight frames */
     .hand-frame{
-      border-radius:14px;
-      padding:10px;
-      border:2px solid rgba(255,255,255,0.08);
+      border-radius:14px;padding:10px;border:2px solid rgba(255,255,255,0.08);
       background: rgba(255,255,255,0.015);
-      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-
     .hand-frame.active-you{
       border-color: rgba(34,197,94,0.55);
       box-shadow: 0 0 0 6px rgba(34,197,94,0.10);
     }
-
     .hand-frame.active-opp{
       border-color: rgba(239,68,68,0.50);
       box-shadow: 0 0 0 6px rgba(239,68,68,0.10);
@@ -234,7 +188,6 @@
       display:none;justify-content:center;align-items:center;gap:10px;margin-bottom:16px;
       font-size:0.95rem;opacity:0.95;
     }
-
     .color-btn{
       width:34px;height:34px;border-radius:999px;border:2px solid #f9fafb;padding:0;cursor:pointer;
       box-shadow:0 4px 10px rgba(0,0,0,0.35);
@@ -278,7 +231,7 @@
       padding:10px 14px;box-shadow:0 10px 25px rgba(0,0,0,0.4);
       gap:10px;align-items:center;
     }
-    #soundGate span{opacity:0.9;font-weight:900;}
+    #soundGate span{opacity:0.9;font-weight:1000;}
     #soundGate button{background:#f97316;}
     #soundGate button:hover:not(:disabled){background:#ea580c;}
 
@@ -308,7 +261,6 @@
 
     <div id="status"></div>
 
-    <!-- BIG TURN INDICATOR -->
     <div id="turnBannerWrap">
       <div id="turnBanner">
         <span id="turnBannerDot"></span>
@@ -398,7 +350,7 @@
       const timerValueEl = document.getElementById("turnTimerValue");
       const dealLayer = document.getElementById("dealLayer");
 
-      // Turn banner elements
+      // Turn indicator
       const turnBannerText = document.getElementById("turnBannerText");
       const myFrame = document.getElementById("myFrame");
       const oppFrame = document.getElementById("oppFrame");
@@ -439,7 +391,7 @@
       let turnTimerInterval = null;
       let lastTurnKey = null;
 
-      // Effects + sounds tracking
+      // Tracking
       let lastWinner = null;
       let lastGameOver = false;
       let lastWild4TopId = null;
@@ -518,7 +470,7 @@
         setTimeout(()=>gameRoot.classList.remove("wild4-impact"), 650);
       }
 
-      // Turn timer
+      // Timer
       function stopTurnTimer(){
         if(turnTimerInterval){ clearInterval(turnTimerInterval); turnTimerInterval = null; }
         turnSecondsRemaining = null;
@@ -557,7 +509,7 @@
         }, 1000);
       }
 
-      // Turn indicator visuals
+      // Turn visuals
       function setTurnVisuals(state){
         if(!state || !state.currentTurn){
           gameRoot.classList.remove("turn-you","turn-opp");
@@ -570,9 +522,7 @@
         const isMyTurn = state.currentTurn === mySocketId;
         gameRoot.classList.toggle("turn-you", isMyTurn);
         gameRoot.classList.toggle("turn-opp", !isMyTurn);
-
         turnBannerText.textContent = isMyTurn ? "YOUR TURN" : "OPPONENT'S TURN";
-
         myFrame.classList.toggle("active-you", isMyTurn);
         oppFrame.classList.toggle("active-opp", !isMyTurn);
       }
@@ -595,12 +545,15 @@
         opponentCountEl.textContent = String(count);
       }
 
-      function renderMyHand(cardsSorted, allowClicks){
+      // ✅ FIX: ALWAYS RENDER YOUR HAND (never depends on turn)
+      // Only clicking depends on turn.
+      function renderMyHand(cardsSorted, clickable){
         playerCardsEl.innerHTML = "";
         cardsSorted.forEach((card)=>{
           const el = renderCard(card);
-          el.classList.add("player-card");
-          if(allowClicks){
+
+          if(clickable){
+            el.classList.add("player-card");
             el.addEventListener("click", ()=>{
               if(!currentRoomCode) return;
 
@@ -609,12 +562,14 @@
                 colorPicker.style.display = "flex";
                 return;
               }
+
               socket.emit("playCard", { roomCode: currentRoomCode, cardId: card.id, chosenColor: null });
             });
           } else {
-            el.style.opacity = "0.75";
+            el.style.opacity = "0.9";
             el.style.cursor = "default";
           }
+
           playerCardsEl.appendChild(el);
         });
       }
@@ -690,12 +645,17 @@
           await sleep(70);
           await anim.finished.catch(()=>{});
 
+          // Reveal
           if(toOpponent){
             dealtRevealOppCount++;
           } else {
             const next = fullMyHandSorted[dealtRevealMy.length];
             if(next) dealtRevealMy.push(next);
           }
+
+          // Update reveal UI immediately
+          renderOpponentBacks(dealtRevealOppCount);
+          renderMyHand(dealtRevealMy, false);
 
           fly.animate([{opacity:1},{opacity:0}], { duration:140, easing:"ease-out" });
           await sleep(140);
@@ -715,7 +675,6 @@
         roomCodeLabel.textContent = state.roomCode || "—";
         youAreLabel.textContent = state.youAre || "—";
 
-        // turn visuals + timer visuals
         setTurnVisuals(state);
 
         deckCountEl.textContent =
@@ -726,7 +685,6 @@
         if(state.discardTop){
           discardTopEl.appendChild(renderCard(state.discardTop));
 
-          // Wild4 impact
           if(state.discardTop.type === "wild4"){
             if(state.discardTop.id !== lastWild4TopId){
               lastWild4TopId = state.discardTop.id;
@@ -744,11 +702,12 @@
         const fullMyHandSorted = sortHand(state.yourHand || []);
         const myCount = fullMyHandSorted.length;
 
+        const isMyTurn = state.currentTurn === mySocketId;
+        const clickable = isMyTurn && !state.isGameOver && !isDealing;
+
         const doDeal = shouldTriggerDealAnimation(myCount, oppCount, state);
 
         if(doDeal){
-          dealtRevealMy = [];
-          dealtRevealOppCount = 0;
           renderOpponentBacks(0);
           renderMyHand([], false);
           animateDealAndReveal(fullMyHandSorted);
@@ -757,12 +716,10 @@
           renderMyHand(dealtRevealMy, false);
         } else {
           renderOpponentBacks(oppCount);
-          const isMyTurn = state.currentTurn === mySocketId;
-          renderMyHand(fullMyHandSorted, !state.isGameOver && isMyTurn);
+          renderMyHand(fullMyHandSorted, clickable);
         }
 
         // buttons
-        const isMyTurn = state.currentTurn === mySocketId;
         drawButton.disabled = !isMyTurn || state.isGameOver || isDealing;
 
         if(!state.isGameOver && myCount <= 2 && myCount > 0 && isMyTurn && !isDealing){
@@ -782,13 +739,11 @@
           showMessage(state.message || "Opponent's turn");
         }
 
-        // timer display
         startTurnTimerForState(state);
 
         // win sounds
         if(state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)){
           const winningCard = state.discardTop;
-
           if(winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")){
             playSound(soundAwesome);
           }
