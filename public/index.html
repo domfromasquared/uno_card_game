@@ -200,7 +200,7 @@
     }
     .is-dealing{filter:saturate(0.95);}
 
-    /* Sound gate (also includes a test button) */
+    /* Sound gate */
     #soundGate{
       display:none;position:sticky;top:0;z-index:60;margin:0 auto 12px;width:fit-content;
       background: rgba(17,24,39,0.95);border:2px solid var(--accent);border-radius:999px;
@@ -210,13 +210,12 @@
     #soundGate span{opacity:0.92;font-weight:1000;}
     #enableSoundBtn{background:#f97316;}
     #enableSoundBtn:hover:not(:disabled){background:#ea580c;}
-    #testSoundBtn{background:#10b981;}
-    #testSoundBtn:hover:not(:disabled){background:#059669;}
+    #testSoundBtn, #testSoundTopBtn{background:#10b981;}
+    #testSoundBtn:hover:not(:disabled), #testSoundTopBtn:hover:not(:disabled){background:#059669;}
 
     @media (max-width:760px){
       .card{width:58px;height:85px;font-size:1rem;}
       #turnTimerBox{min-width:220px;}
-      .card-slot{width:86px;height:126px;}
       #turnBanner{min-width:240px;}
     }
   </style>
@@ -304,11 +303,11 @@
 
     <div id="dealLayer"></div>
 
-    <!-- Sounds (must be in /public) -->
-    <audio id="soundNewHand" src="new_hand.mp3" preload="auto"></audio>
-    <audio id="soundWildImpact" src="wild_impact.mp3" preload="auto"></audio>
-    <audio id="soundWin" src="success_1.mp3" preload="auto"></audio>
-    <audio id="soundAwesome" src="awesome.mp3" preload="auto"></audio>
+    <!-- Sounds: UPDATED TO .wav -->
+    <audio id="soundNewHand" src="new_hand.wav" preload="auto"></audio>
+    <audio id="soundWildImpact" src="wild_impact.wav" preload="auto"></audio>
+    <audio id="soundWin" src="success_1.wav" preload="auto"></audio>
+    <audio id="soundAwesome" src="awesome.wav" preload="auto"></audio>
 
     <script>
       const socket = io();
@@ -364,9 +363,9 @@
         // Must be called from a user click/tap
         soundEnabled = true;
 
-        // Attempt the classic unlock: play very quietly then stop.
         const a = soundNewHand;
         try{
+          // Some browsers require an actual play() to unlock
           a.volume = 0.001;
           a.currentTime = 0;
           await a.play();
@@ -395,11 +394,10 @@
         if(!soundEnabled){
           const ok = await unlockAudio();
           if(!ok){
-            alert("Audio blocked. Check tab mute + system volume. Also verify MP3 file paths.");
+            alert("Audio blocked. Check tab mute + system volume. Also verify WAV file paths.");
             return;
           }
         }
-        // Loud obvious sound
         playSound(soundAwesome);
       }
 
@@ -428,7 +426,7 @@
       let dealtRevealMy = [];
       let dealtRevealOppCount = 0;
 
-      // Sorting: color then number, actions, wilds last
+      // Sorting: color then number, then actions, wilds last
       const colorOrder = { red:0, yellow:1, green:2, blue:3 };
       const typeOrder  = { number:0, skip:1, reverse:2, draw2:3, wild:4, wild4:5 };
 
@@ -487,7 +485,6 @@
         pendingWildCardId = null;
       }
 
-      // Wild4 effect
       function triggerWild4Effect(){
         gameRoot.classList.remove("wild4-impact");
         void gameRoot.offsetWidth;
@@ -619,7 +616,7 @@
         dealtRevealMy = [];
         dealtRevealOppCount = 0;
 
-        // new game sound happens here too
+        // New game sound (WAV)
         playSound(soundNewHand);
 
         const start = getCenter(drawButton);
@@ -667,13 +664,13 @@
           await sleep(70);
           await anim.finished.catch(()=>{});
 
-          // Reveal + render immediately
           if(toOpponent){
             dealtRevealOppCount++;
           } else {
             const next = fullMyHandSorted[dealtRevealMy.length];
             if(next) dealtRevealMy.push(next);
           }
+
           renderOpponentBacks(dealtRevealOppCount);
           renderMyHand(dealtRevealMy, false);
 
@@ -705,7 +702,7 @@
         if(state.discardTop){
           discardTopEl.appendChild(renderCard(state.discardTop));
 
-          // wild4 impact
+          // Draw 4 effect + sound
           if(state.discardTop.type === "wild4"){
             if(state.discardTop.id !== lastWild4TopId){
               lastWild4TopId = state.discardTop.id;
@@ -766,17 +763,16 @@
         if(state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)){
           const winningCard = state.discardTop;
 
-          // awesome for both if wild/wild4 won
+          // awesome for BOTH if wild/wild4 ended the game
           if(winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")){
             playSound(soundAwesome);
           }
-          // winner-only success
+          // success for winner only
           if(state.winner === mySocketId){
             playSound(soundWin);
           }
         }
 
-        // save
         lastHandSize = myCount;
         lastOppCount = oppCount;
         lastGameOver = state.isGameOver;
