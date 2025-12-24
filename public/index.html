@@ -198,18 +198,6 @@
       font-weight:1000;letter-spacing:1px;color:rgba(255,255,255,0.9);font-size:0.9rem;
     }
 
-    #soundGate{
-      display:none;position:sticky;top:0;z-index:60;margin:0 auto 12px;width:fit-content;
-      background: rgba(17,24,39,0.95);border:2px solid var(--accent);border-radius:999px;
-      padding:10px 14px;box-shadow:0 10px 25px rgba(0,0,0,0.4);
-      gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;
-    }
-    #soundGate span{opacity:0.92;font-weight:1000;}
-    #enableSoundBtn{background:#f97316;}
-    #enableSoundBtn:hover:not(:disabled){background:#ea580c;}
-    #testSoundBtn,#testSoundTopBtn{background:#10b981;}
-    #testSoundBtn:hover:not(:disabled),#testSoundTopBtn:hover:not(:disabled){background:#059669;}
-
     @media (max-width:760px){
       .card{width:58px;height:85px;font-size:1rem;}
       #turnTimerBox{min-width:220px;}
@@ -226,7 +214,6 @@
       <button id="createRoomBtn">Create Room</button>
       <input id="roomInput" placeholder="Room code" />
       <button id="joinRoomBtn">Join Room</button>
-      <button id="testSoundTopBtn" title="Quick test">Test Sound 🔊</button>
     </div>
 
     <div class="info-line">
@@ -241,12 +228,6 @@
         <span id="turnBannerDot"></span>
         <span id="turnBannerText">Waiting…</span>
       </div>
-    </div>
-
-    <div id="soundGate">
-      <span>🔊 Sounds are OFF. Click Enable Sound (required by browsers).</span>
-      <button id="enableSoundBtn">Enable Sound</button>
-      <button id="testSoundBtn">Test Sound</button>
     </div>
 
     <div id="turnTimerBar">
@@ -326,16 +307,9 @@
       const timerValueEl = document.getElementById("turnTimerValue");
       const dealLayer = document.getElementById("dealLayer");
 
-      // turn visuals
       const turnBannerText = document.getElementById("turnBannerText");
       const myFrame = document.getElementById("myFrame");
       const oppFrame = document.getElementById("oppFrame");
-
-      // sound gate
-      const soundGate = document.getElementById("soundGate");
-      const enableSoundBtn = document.getElementById("enableSoundBtn");
-      const testSoundBtn = document.getElementById("testSoundBtn");
-      const testSoundTopBtn = document.getElementById("testSoundTopBtn");
 
       // sounds
       const soundNewHand = document.getElementById("soundNewHand");
@@ -343,48 +317,45 @@
       const soundWin = document.getElementById("soundWin");
       const soundAwesome = document.getElementById("soundAwesome");
 
+      // ✅ Auto-unlock audio on first user interaction
       let soundEnabled = false;
-      soundGate.style.display = "flex";
+      let audioUnlocked = false;
 
       function playSound(audio){
-        if(!soundEnabled) return;
+        if(!soundEnabled || !audioUnlocked) return;
         audio.currentTime = 0;
-        audio.play().catch(e => console.log("❌ play() failed:", e));
+        audio.play().catch(()=>{});
       }
 
-      async function unlockAudio(){
+      async function unlockAudioOnce(){
+        if(audioUnlocked) return true;
         soundEnabled = true;
         try{
+          // tiny silent play/pause to satisfy the gesture rule
           soundNewHand.volume = 0.001;
           soundNewHand.currentTime = 0;
           await soundNewHand.play();
           soundNewHand.pause();
           soundNewHand.currentTime = 0;
           soundNewHand.volume = 1.0;
-          console.log("✅ Audio unlocked");
+          audioUnlocked = true;
           return true;
         }catch(e){
-          console.log("❌ Audio unlock failed:", e);
-          soundEnabled = false;
+          // still blocked until user clicks again in some browsers
+          audioUnlocked = false;
           return false;
         }
       }
 
-      enableSoundBtn.addEventListener("click", async ()=>{
-        const ok = await unlockAudio();
-        if(ok) soundGate.style.display = "none";
-        else alert("Audio blocked. Check tab mute + system volume.");
-      });
-
-      async function testSoundFlow(){
-        if(!soundEnabled){
-          const ok = await unlockAudio();
-          if(!ok) return alert("Audio blocked. Check tab mute + system volume.");
-        }
-        playSound(soundAwesome);
-      }
-      testSoundBtn.addEventListener("click", testSoundFlow);
-      testSoundTopBtn.addEventListener("click", testSoundFlow);
+      // Unlock on *any* first click/tap/keypress
+      const unlockHandler = async () => {
+        await unlockAudioOnce();
+        // remove listeners after first attempt (keeps it simple)
+        window.removeEventListener("pointerdown", unlockHandler);
+        window.removeEventListener("keydown", unlockHandler);
+      };
+      window.addEventListener("pointerdown", unlockHandler, { once:true });
+      window.addEventListener("keydown", unlockHandler, { once:true });
 
       // state
       let currentRoomCode = null;
@@ -476,7 +447,9 @@
           const el = renderCard(card);
           if(clickable){
             el.classList.add("player-card");
-            el.addEventListener("click", ()=>{
+            el.addEventListener("click", async ()=>{
+              await unlockAudioOnce();
+
               if(!currentRoomCode) return;
 
               if(card.type === "wild" || card.type === "wild4"){
@@ -517,7 +490,6 @@
         oppFrame.classList.toggle("active-opp", !isMyTurn);
       }
 
-      // Timer display only: start when phase is playing
       function stopTurnTimer(){
         if(turnTimerInterval){ clearInterval(turnTimerInterval); turnTimerInterval = null; }
         turnSecondsRemaining = null;
@@ -580,6 +552,7 @@
         renderOpponentBacks(0);
         renderMyHand([], false);
 
+        await unlockAudioOnce();
         playSound(soundNewHand);
 
         const start = getCenter(drawButton);
@@ -647,7 +620,6 @@
 
         isDealAnimating = false;
 
-        // ✅ notify server: this client finished dealing animation
         if(currentRoomCode && state.gameId != null && dealDoneSentForGameId !== state.gameId){
           dealDoneSentForGameId = state.gameId;
           socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
@@ -667,48 +639,42 @@
 
         setTurnVisuals(state);
 
-        // discard
         discardTopEl.innerHTML = "";
         if(state.discardTop) discardTopEl.appendChild(renderCard(state.discardTop));
 
         deckCountEl.textContent =
           state.deckCount != null ? `${state.deckCount} card${state.deckCount===1?"":"s"} left` : "";
 
-        // ✅ During dealing: no gameplay
         const canInteract = state.phase === "playing" && !state.isGameOver;
-
         const isMyTurn = canInteract && state.currentTurn === mySocketId;
         const clickable = isMyTurn && !isDealAnimating;
 
         drawButton.disabled = !isMyTurn;
         unoButton.disabled = !(isMyTurn && myCount > 0 && myCount <= 2);
 
-        if(state.isGameOver){
-          showMessage(state.winner === mySocketId ? "You win!" : "Opponent wins.");
-        } else {
-          showMessage(state.message || "");
-        }
+        showMessage(state.isGameOver
+          ? (state.winner === mySocketId ? "You win!" : "Opponent wins.")
+          : (state.message || "")
+        );
 
         startTurnTimerForState(state);
 
-        // wild4 effect
         const topId = state.discardTop ? state.discardTop.id : null;
         const effectKey = `${state.gameId}|${topId}|${state.specialEffect || ""}`;
         if(effectKey !== lastEffectKey){
           lastEffectKey = effectKey;
           if(state.specialEffect === "wild4"){
+            await unlockAudioOnce();
             playSound(soundWildImpact);
             triggerWild4Effect();
           }
         }
 
-        // render hands (normal)
         if(!isDealAnimating){
           renderOpponentBacks(oppCount);
           renderMyHand(fullMyHandSorted, clickable);
         }
 
-        // ✅ deal animation only when gameId changes
         if(state.gameId != null && state.gameId !== lastGameId){
           lastGameId = state.gameId;
           dealDoneSentForGameId = null;
@@ -718,16 +684,14 @@
           }
         }
 
-        // ✅ if we join late / refresh and phase is dealing, still ack once we have a hand
         if(state.phase === "dealing" && !isDealAnimating && currentRoomCode && dealDoneSentForGameId !== state.gameId){
-          // If no animation is running (ex: very fast UI), still ack so server can start
           dealDoneSentForGameId = state.gameId;
           socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
         }
 
-        // win sounds
         if(state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)){
           const winningCard = state.discardTop;
+          await unlockAudioOnce();
           if(winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")){
             playSound(soundAwesome);
           }
@@ -740,26 +704,34 @@
         lastWinner = state.winner || null;
       }
 
-      // UI events
-      document.getElementById("createRoomBtn").addEventListener("click", ()=> socket.emit("createRoom"));
-      document.getElementById("joinRoomBtn").addEventListener("click", ()=>{
+      // UI events (also trigger audio unlock)
+      document.getElementById("createRoomBtn").addEventListener("click", async ()=>{
+        await unlockAudioOnce();
+        socket.emit("createRoom");
+      });
+
+      document.getElementById("joinRoomBtn").addEventListener("click", async ()=>{
+        await unlockAudioOnce();
         const code = document.getElementById("roomInput").value.trim();
         if(!code){ showMessage("Enter a room code first."); return; }
         socket.emit("joinRoom", { roomCode: code });
       });
 
-      drawButton.addEventListener("click", ()=>{
+      drawButton.addEventListener("click", async ()=>{
+        await unlockAudioOnce();
         if(!currentRoomCode) return;
         socket.emit("drawCard", { roomCode: currentRoomCode });
       });
 
-      unoButton.addEventListener("click", ()=>{
+      unoButton.addEventListener("click", async ()=>{
+        await unlockAudioOnce();
         if(!currentRoomCode) return;
         socket.emit("yellUno", { roomCode: currentRoomCode });
       });
 
       colorButtons.forEach(btn=>{
-        btn.addEventListener("click", ()=>{
+        btn.addEventListener("click", async ()=>{
+          await unlockAudioOnce();
           const color = btn.dataset.color;
           if(!currentRoomCode || !pendingWildCardId) return;
           socket.emit("playCard", { roomCode: currentRoomCode, cardId: pendingWildCardId, chosenColor: color });
