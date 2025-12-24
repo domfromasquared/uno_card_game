@@ -37,6 +37,7 @@
       transition:transform 0.2s ease;
     }
     h1{margin-top:0;text-align:center;letter-spacing:1px;}
+
     .top-bar{
       display:flex;justify-content:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;
     }
@@ -65,7 +66,6 @@
       color:rgba(255,255,255,0.92);
     }
 
-    /* TURN BANNER */
     #turnBannerWrap{display:flex;justify-content:center;margin-bottom:10px;}
     #turnBanner{
       padding:10px 16px;border-radius:999px;font-weight:1000;letter-spacing:0.5px;
@@ -86,7 +86,6 @@
       100%{ box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
     }
 
-    /* TIMER */
     #turnTimerBar{display:flex;justify-content:center;align-items:center;margin-bottom:14px;}
     #turnTimerBox{
       min-width:260px;padding:10px 18px;border-radius:999px;background:#111827;
@@ -198,9 +197,7 @@
       content:"UNO";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
       font-weight:1000;letter-spacing:1px;color:rgba(255,255,255,0.9);font-size:0.9rem;
     }
-    .is-dealing{filter:saturate(0.95);}
 
-    /* Sound gate */
     #soundGate{
       display:none;position:sticky;top:0;z-index:60;margin:0 auto 12px;width:fit-content;
       background: rgba(17,24,39,0.95);border:2px solid var(--accent);border-radius:999px;
@@ -210,8 +207,8 @@
     #soundGate span{opacity:0.92;font-weight:1000;}
     #enableSoundBtn{background:#f97316;}
     #enableSoundBtn:hover:not(:disabled){background:#ea580c;}
-    #testSoundBtn, #testSoundTopBtn{background:#10b981;}
-    #testSoundBtn:hover:not(:disabled), #testSoundTopBtn:hover:not(:disabled){background:#059669;}
+    #testSoundBtn,#testSoundTopBtn{background:#10b981;}
+    #testSoundBtn:hover:not(:disabled),#testSoundTopBtn:hover:not(:disabled){background:#059669;}
 
     @media (max-width:760px){
       .card{width:58px;height:85px;font-size:1rem;}
@@ -303,7 +300,7 @@
 
     <div id="dealLayer"></div>
 
-    <!-- Sounds: UPDATED TO .wav -->
+    <!-- WAV sounds -->
     <audio id="soundNewHand" src="new_hand.wav" preload="auto"></audio>
     <audio id="soundWildImpact" src="wild_impact.wav" preload="auto"></audio>
     <audio id="soundWin" src="success_1.wav" preload="auto"></audio>
@@ -329,52 +326,44 @@
       const timerValueEl = document.getElementById("turnTimerValue");
       const dealLayer = document.getElementById("dealLayer");
 
-      // Turn indicator
+      // turn visuals
       const turnBannerText = document.getElementById("turnBannerText");
       const myFrame = document.getElementById("myFrame");
       const oppFrame = document.getElementById("oppFrame");
 
-      // Sound gate
+      // sound gate
       const soundGate = document.getElementById("soundGate");
       const enableSoundBtn = document.getElementById("enableSoundBtn");
       const testSoundBtn = document.getElementById("testSoundBtn");
       const testSoundTopBtn = document.getElementById("testSoundTopBtn");
 
-      // Sounds
+      // sounds
       const soundNewHand = document.getElementById("soundNewHand");
       const soundWildImpact = document.getElementById("soundWildImpact");
       const soundWin = document.getElementById("soundWin");
       const soundAwesome = document.getElementById("soundAwesome");
 
-      // Sound control
       let soundEnabled = false;
       soundGate.style.display = "flex";
 
       function playSound(audio){
         if(!soundEnabled) return;
-        if(!audio) return;
         audio.currentTime = 0;
-        audio.play().catch((e)=>{
-          console.log("❌ play() failed:", e);
-        });
+        audio.play().catch(e => console.log("❌ play() failed:", e));
       }
 
       async function unlockAudio(){
-        // Must be called from a user click/tap
         soundEnabled = true;
-
-        const a = soundNewHand;
         try{
-          // Some browsers require an actual play() to unlock
-          a.volume = 0.001;
-          a.currentTime = 0;
-          await a.play();
-          a.pause();
-          a.currentTime = 0;
-          a.volume = 1.0;
+          soundNewHand.volume = 0.001;
+          soundNewHand.currentTime = 0;
+          await soundNewHand.play();
+          soundNewHand.pause();
+          soundNewHand.currentTime = 0;
+          soundNewHand.volume = 1.0;
           console.log("✅ Audio unlocked");
           return true;
-        } catch(e){
+        }catch(e){
           console.log("❌ Audio unlock failed:", e);
           soundEnabled = false;
           return false;
@@ -383,53 +372,44 @@
 
       enableSoundBtn.addEventListener("click", async ()=>{
         const ok = await unlockAudio();
-        if(ok){
-          soundGate.style.display = "none";
-        } else {
-          alert("Audio is blocked. Check tab mute, system volume, and site permissions.");
-        }
+        if(ok) soundGate.style.display = "none";
+        else alert("Audio blocked. Check tab mute + system volume.");
       });
 
       async function testSoundFlow(){
         if(!soundEnabled){
           const ok = await unlockAudio();
-          if(!ok){
-            alert("Audio blocked. Check tab mute + system volume. Also verify WAV file paths.");
-            return;
-          }
+          if(!ok) return alert("Audio blocked. Check tab mute + system volume.");
         }
         playSound(soundAwesome);
       }
-
       testSoundBtn.addEventListener("click", testSoundFlow);
       testSoundTopBtn.addEventListener("click", testSoundFlow);
 
-      // State
+      // state
       let currentRoomCode = null;
       let mySocketId = null;
       let pendingWildCardId = null;
 
-      // Timer UI
+      // timer display
       let turnSecondsRemaining = null;
       let turnTimerInterval = null;
       let lastTurnKey = null;
 
-      // Tracking
+      // tracking
       let lastWinner = null;
       let lastGameOver = false;
-      let lastWild4TopId = null;
+      let lastEffectKey = null;
 
-      // Deal animation / reveal
-      let isDealing = false;
-      let lastHandSize = null;
-      let lastOppCount = null;
-      let dealtRevealMy = [];
-      let dealtRevealOppCount = 0;
+      // deal animation handshake
+      let lastGameId = null;
+      let isDealAnimating = false;
+      let dealAbortToken = 0;
+      let dealDoneSentForGameId = null;
 
-      // Sorting: color then number, then actions, wilds last
+      // sorting
       const colorOrder = { red:0, yellow:1, green:2, blue:3 };
       const typeOrder  = { number:0, skip:1, reverse:2, draw2:3, wild:4, wild4:5 };
-
       function sortHand(cards){
         const arr = (cards || []).slice();
         arr.sort((a,b)=>{
@@ -454,7 +434,6 @@
         return arr;
       }
 
-      // Helpers
       function showMessage(msg){ statusEl.textContent = msg || ""; }
 
       function renderCard(card){
@@ -479,82 +458,6 @@
         el.appendChild(span);
         return el;
       }
-
-      function hideColorPicker(){
-        colorPicker.style.display = "none";
-        pendingWildCardId = null;
-      }
-
-      function triggerWild4Effect(){
-        gameRoot.classList.remove("wild4-impact");
-        void gameRoot.offsetWidth;
-        gameRoot.classList.add("wild4-impact");
-        setTimeout(()=>gameRoot.classList.remove("wild4-impact"), 650);
-      }
-
-      // Timer
-      function stopTurnTimer(){
-        if(turnTimerInterval){ clearInterval(turnTimerInterval); turnTimerInterval = null; }
-        turnSecondsRemaining = null;
-        timerValueEl.textContent = "--";
-        timerValueEl.classList.remove("danger");
-      }
-
-      function startTurnTimerForState(state){
-        if(state.isGameOver || !state.currentTurn){
-          stopTurnTimer();
-          return;
-        }
-        const key = `${state.roomCode || ""}|${state.currentTurn}`;
-        if(key === lastTurnKey && turnSecondsRemaining !== null) return;
-
-        lastTurnKey = key;
-        stopTurnTimer();
-        turnSecondsRemaining = 20;
-        timerValueEl.textContent = "20s";
-        timerValueEl.classList.remove("danger");
-
-        turnTimerInterval = setInterval(()=>{
-          if(turnSecondsRemaining === null) return;
-          turnSecondsRemaining--;
-          if(turnSecondsRemaining <= 0){
-            turnSecondsRemaining = 0;
-            timerValueEl.textContent = "0s";
-            timerValueEl.classList.add("danger");
-            clearInterval(turnTimerInterval);
-            turnTimerInterval = null;
-          } else {
-            timerValueEl.textContent = `${turnSecondsRemaining}s`;
-            if(turnSecondsRemaining <= 5) timerValueEl.classList.add("danger");
-            else timerValueEl.classList.remove("danger");
-          }
-        }, 1000);
-      }
-
-      // Turn visuals
-      function setTurnVisuals(state){
-        if(!state || !state.currentTurn){
-          gameRoot.classList.remove("turn-you","turn-opp");
-          turnBannerText.textContent = "Waiting…";
-          myFrame.classList.remove("active-you");
-          oppFrame.classList.remove("active-opp");
-          return;
-        }
-
-        const isMyTurn = state.currentTurn === mySocketId;
-        gameRoot.classList.toggle("turn-you", isMyTurn);
-        gameRoot.classList.toggle("turn-opp", !isMyTurn);
-        turnBannerText.textContent = isMyTurn ? "YOUR TURN" : "OPPONENT'S TURN";
-        myFrame.classList.toggle("active-you", isMyTurn);
-        oppFrame.classList.toggle("active-opp", !isMyTurn);
-      }
-
-      // Deal animation helpers
-      function getCenter(el){
-        const r = el.getBoundingClientRect();
-        return { x: r.left + r.width/2, y: r.top + r.height/2 };
-      }
-      function sleep(ms){ return new Promise(res=>setTimeout(res, ms)); }
 
       function renderOpponentBacks(count){
         opponentCardsEl.innerHTML = "";
@@ -592,39 +495,103 @@
         });
       }
 
-      function shouldTriggerDealAnimation(myCount, oppCount, state){
-        if(!state || state.isGameOver) return false;
-        const nowMy7 = myCount === 7;
-        const nowOpp7 = oppCount === 7;
-
-        const previouslyNotDealt =
-          (lastHandSize === null || lastHandSize === 0 || lastHandSize !== 7) &&
-          (lastOppCount === null || lastOppCount === 0 || lastOppCount !== 7);
-
-        return nowMy7 && nowOpp7 && previouslyNotDealt;
+      function hideColorPicker(){
+        colorPicker.style.display = "none";
+        pendingWildCardId = null;
       }
 
-      async function animateDealAndReveal(fullMyHandSorted){
-        if(isDealing) return;
-        isDealing = true;
-        gameRoot.classList.add("is-dealing");
-        hideColorPicker();
+      function setTurnVisuals(state){
+        if(!state || !state.currentTurn || state.phase !== "playing"){
+          gameRoot.classList.remove("turn-you","turn-opp");
+          turnBannerText.textContent = state?.phase === "dealing" ? "DEALING…" : "WAITING…";
+          myFrame.classList.remove("active-you");
+          oppFrame.classList.remove("active-opp");
+          return;
+        }
 
-        drawButton.disabled = true;
-        unoButton.disabled = true;
+        const isMyTurn = state.currentTurn === mySocketId;
+        gameRoot.classList.toggle("turn-you", isMyTurn);
+        gameRoot.classList.toggle("turn-opp", !isMyTurn);
+        turnBannerText.textContent = isMyTurn ? "YOUR TURN" : "OPPONENT'S TURN";
+        myFrame.classList.toggle("active-you", isMyTurn);
+        oppFrame.classList.toggle("active-opp", !isMyTurn);
+      }
 
-        dealtRevealMy = [];
-        dealtRevealOppCount = 0;
+      // Timer display only: start when phase is playing
+      function stopTurnTimer(){
+        if(turnTimerInterval){ clearInterval(turnTimerInterval); turnTimerInterval = null; }
+        turnSecondsRemaining = null;
+        timerValueEl.textContent = "--";
+        timerValueEl.classList.remove("danger");
+      }
 
-        // New game sound (WAV)
+      function startTurnTimerForState(state){
+        if(!state || state.isGameOver || state.phase !== "playing" || !state.currentTurn){
+          stopTurnTimer();
+          return;
+        }
+
+        const key = `${state.roomCode}|${state.currentTurn}|${state.lastMoveAt || ""}`;
+        if(key === lastTurnKey && turnSecondsRemaining !== null) return;
+
+        lastTurnKey = key;
+        stopTurnTimer();
+
+        turnSecondsRemaining = 20;
+        timerValueEl.textContent = "20s";
+        timerValueEl.classList.remove("danger");
+
+        turnTimerInterval = setInterval(()=>{
+          turnSecondsRemaining--;
+          if(turnSecondsRemaining <= 0){
+            turnSecondsRemaining = 0;
+            timerValueEl.textContent = "0s";
+            timerValueEl.classList.add("danger");
+            clearInterval(turnTimerInterval);
+            turnTimerInterval = null;
+          } else {
+            timerValueEl.textContent = `${turnSecondsRemaining}s`;
+            if(turnSecondsRemaining <= 5) timerValueEl.classList.add("danger");
+            else timerValueEl.classList.remove("danger");
+          }
+        }, 1000);
+      }
+
+      function triggerWild4Effect(){
+        gameRoot.classList.remove("wild4-impact");
+        void gameRoot.offsetWidth;
+        gameRoot.classList.add("wild4-impact");
+        setTimeout(()=>gameRoot.classList.remove("wild4-impact"), 650);
+      }
+
+      function getCenter(el){
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width/2, y: r.top + r.height/2 };
+      }
+      function sleep(ms){ return new Promise(res=>setTimeout(res, ms)); }
+
+      async function animateDeal(state, fullMyHandSorted){
+        dealAbortToken++;
+        const token = dealAbortToken;
+
+        isDealAnimating = true;
+        dealLayer.innerHTML = "";
+
+        renderOpponentBacks(0);
+        renderMyHand([], false);
+
         playSound(soundNewHand);
 
         const start = getCenter(drawButton);
         const oppTarget = getCenter(opponentCardsEl);
         const myTarget  = getCenter(playerCardsEl);
 
-        const total = 14;
-        for(let i=0;i<total;i++){
+        let revealMy = [];
+        let revealOpp = 0;
+
+        for(let i=0;i<14;i++){
+          if(token !== dealAbortToken) return;
+
           const toOpponent = i % 2 === 0;
           const target = toOpponent ? oppTarget : myTarget;
 
@@ -664,117 +631,111 @@
           await sleep(70);
           await anim.finished.catch(()=>{});
 
-          if(toOpponent){
-            dealtRevealOppCount++;
-          } else {
-            const next = fullMyHandSorted[dealtRevealMy.length];
-            if(next) dealtRevealMy.push(next);
+          if(toOpponent) revealOpp++;
+          else {
+            const next = fullMyHandSorted[revealMy.length];
+            if(next) revealMy.push(next);
           }
 
-          renderOpponentBacks(dealtRevealOppCount);
-          renderMyHand(dealtRevealMy, false);
+          renderOpponentBacks(revealOpp);
+          renderMyHand(revealMy, false);
 
           fly.animate([{opacity:1},{opacity:0}], { duration:140, easing:"ease-out" });
           await sleep(140);
           fly.remove();
         }
 
-        gameRoot.classList.remove("is-dealing");
-        isDealing = false;
+        isDealAnimating = false;
+
+        // ✅ notify server: this client finished dealing animation
+        if(currentRoomCode && state.gameId != null && dealDoneSentForGameId !== state.gameId){
+          dealDoneSentForGameId = state.gameId;
+          socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
+        }
       }
 
-      // Main update
-      function updateUI(state){
+      async function updateUI(state){
         if(!state) return;
 
         currentRoomCode = state.roomCode;
-
         roomCodeLabel.textContent = state.roomCode || "—";
         youAreLabel.textContent = state.youAre || "—";
 
+        const fullMyHandSorted = sortHand(state.yourHand || []);
+        const myCount = fullMyHandSorted.length;
+        const oppCount = state.opponentCardCount || 0;
+
         setTurnVisuals(state);
+
+        // discard
+        discardTopEl.innerHTML = "";
+        if(state.discardTop) discardTopEl.appendChild(renderCard(state.discardTop));
 
         deckCountEl.textContent =
           state.deckCount != null ? `${state.deckCount} card${state.deckCount===1?"":"s"} left` : "";
 
-        // Discard
-        discardTopEl.innerHTML = "";
-        if(state.discardTop){
-          discardTopEl.appendChild(renderCard(state.discardTop));
+        // ✅ During dealing: no gameplay
+        const canInteract = state.phase === "playing" && !state.isGameOver;
 
-          // Draw 4 effect + sound
-          if(state.discardTop.type === "wild4"){
-            if(state.discardTop.id !== lastWild4TopId){
-              lastWild4TopId = state.discardTop.id;
-              playSound(soundWildImpact);
-              triggerWild4Effect();
-            }
-          } else {
-            lastWild4TopId = null;
-          }
-        } else {
-          lastWild4TopId = null;
-        }
+        const isMyTurn = canInteract && state.currentTurn === mySocketId;
+        const clickable = isMyTurn && !isDealAnimating;
 
-        const oppCount = state.opponentCardCount || 0;
-        const fullMyHandSorted = sortHand(state.yourHand || []);
-        const myCount = fullMyHandSorted.length;
+        drawButton.disabled = !isMyTurn;
+        unoButton.disabled = !(isMyTurn && myCount > 0 && myCount <= 2);
 
-        const isMyTurn = state.currentTurn === mySocketId;
-        const clickable = isMyTurn && !state.isGameOver && !isDealing;
-
-        const doDeal = shouldTriggerDealAnimation(myCount, oppCount, state);
-
-        if(doDeal){
-          renderOpponentBacks(0);
-          renderMyHand([], false);
-          animateDealAndReveal(fullMyHandSorted);
-        } else if(isDealing){
-          renderOpponentBacks(dealtRevealOppCount);
-          renderMyHand(dealtRevealMy, false);
-        } else {
-          renderOpponentBacks(oppCount);
-          renderMyHand(fullMyHandSorted, clickable);
-        }
-
-        // buttons
-        drawButton.disabled = !isMyTurn || state.isGameOver || isDealing;
-
-        if(!state.isGameOver && myCount <= 2 && myCount > 0 && isMyTurn && !isDealing){
-          unoButton.disabled = false;
-        } else {
-          unoButton.disabled = true;
-        }
-
-        // status
         if(state.isGameOver){
           showMessage(state.winner === mySocketId ? "You win!" : "Opponent wins.");
-        } else if(!state.currentTurn){
-          showMessage(state.message || "Waiting for players...");
-        } else if(isMyTurn){
-          showMessage(state.message || "Your turn");
         } else {
-          showMessage(state.message || "Opponent's turn");
+          showMessage(state.message || "");
         }
 
         startTurnTimerForState(state);
 
+        // wild4 effect
+        const topId = state.discardTop ? state.discardTop.id : null;
+        const effectKey = `${state.gameId}|${topId}|${state.specialEffect || ""}`;
+        if(effectKey !== lastEffectKey){
+          lastEffectKey = effectKey;
+          if(state.specialEffect === "wild4"){
+            playSound(soundWildImpact);
+            triggerWild4Effect();
+          }
+        }
+
+        // render hands (normal)
+        if(!isDealAnimating){
+          renderOpponentBacks(oppCount);
+          renderMyHand(fullMyHandSorted, clickable);
+        }
+
+        // ✅ deal animation only when gameId changes
+        if(state.gameId != null && state.gameId !== lastGameId){
+          lastGameId = state.gameId;
+          dealDoneSentForGameId = null;
+          hideColorPicker();
+          if(state.phase === "dealing"){
+            animateDeal(state, fullMyHandSorted).catch(()=>{});
+          }
+        }
+
+        // ✅ if we join late / refresh and phase is dealing, still ack once we have a hand
+        if(state.phase === "dealing" && !isDealAnimating && currentRoomCode && dealDoneSentForGameId !== state.gameId){
+          // If no animation is running (ex: very fast UI), still ack so server can start
+          dealDoneSentForGameId = state.gameId;
+          socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
+        }
+
         // win sounds
         if(state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)){
           const winningCard = state.discardTop;
-
-          // awesome for BOTH if wild/wild4 ended the game
           if(winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")){
             playSound(soundAwesome);
           }
-          // success for winner only
           if(state.winner === mySocketId){
             playSound(soundWin);
           }
         }
 
-        lastHandSize = myCount;
-        lastOppCount = oppCount;
         lastGameOver = state.isGameOver;
         lastWinner = state.winner || null;
       }
@@ -788,25 +749,24 @@
       });
 
       drawButton.addEventListener("click", ()=>{
-        if(!currentRoomCode || isDealing) return;
+        if(!currentRoomCode) return;
         socket.emit("drawCard", { roomCode: currentRoomCode });
       });
 
       unoButton.addEventListener("click", ()=>{
-        if(!currentRoomCode || isDealing) return;
+        if(!currentRoomCode) return;
         socket.emit("yellUno", { roomCode: currentRoomCode });
       });
 
       colorButtons.forEach(btn=>{
         btn.addEventListener("click", ()=>{
           const color = btn.dataset.color;
-          if(!currentRoomCode || !pendingWildCardId || isDealing) return;
+          if(!currentRoomCode || !pendingWildCardId) return;
           socket.emit("playCard", { roomCode: currentRoomCode, cardId: pendingWildCardId, chosenColor: color });
           hideColorPicker();
         });
       });
 
-      // Socket events
       socket.on("connect", ()=> { mySocketId = socket.id; });
 
       socket.on("roomCreated", ({ roomCode, youAre })=>{
@@ -814,6 +774,8 @@
         roomCodeLabel.textContent = roomCode;
         youAreLabel.textContent = youAre;
         showMessage(`Room created. Share code: ${roomCode}`);
+        lastGameId = null;
+        dealDoneSentForGameId = null;
       });
 
       socket.on("gameState", (state)=> updateUI(state));
