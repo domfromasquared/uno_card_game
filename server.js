@@ -75,9 +75,7 @@ function canPlay(card, top) {
   if (card.color === top.color) return true;
 
   // same number
-  if (card.type === "number" && top.type === "number" && card.value === top.value) {
-    return true;
-  }
+  if (card.type === "number" && top.type === "number" && card.value === top.value) return true;
 
   // same action type
   if (card.type !== "number" && card.type === top.type) return true;
@@ -95,7 +93,8 @@ function describeCard(card) {
   return `${card.color} ${name}`;
 }
 
-// Turn timer: skip if player takes too long
+// ---- TURN TIMER ----
+// skip if player takes too long
 function setTurnTimer(roomCode) {
   const room = rooms[roomCode];
   if (!room) return;
@@ -117,26 +116,38 @@ function setTurnTimer(roomCode) {
     // If turn already moved, don't double-skip
     if (r.currentTurn !== playerToTimeout) return;
 
-    const other = r.players.find((id) => id && id !== playerToTimeout);
-    r.message = "Player took too long. Turn skipped.";
-    r.currentTurn = other || playerToTimeout;
+    const other = r.players.find((id) => id && id !== playerToTimeout) || playerToTimeout;
+
+    r.message = "⏱️ Player took too long. Turn skipped.";
+    r.currentTurn = other;
+    r.lastMoveAt = Date.now();
+
     r.turnTimeout = null;
     sendGameState(roomCode);
+
     // Start timer for the next player
     setTurnTimer(roomCode);
   }, 20000); // 20 seconds
 }
 
 function dealInitialCards(room, roomCode) {
+  // ✅ NEW GAME ID + PHASE
+  room.gameId = (room.gameId || 0) + 1;
+  room.phase = "dealing";
+
   room.deck = createDeck();
   shuffle(room.deck);
+
   room.discardPile = [];
   room.isGameOver = false;
   room.winner = null;
+
   room.unoStatus = room.unoStatus || {};
   room.specialEffect = null;
+  room.lastMoveAt = Date.now();
 
-  // make sure hands exist
+  // Ensure hands exist / reset hands fully for new game
+  room.hands = {};
   room.players.forEach((pid) => {
     if (pid) room.hands[pid] = [];
   });
@@ -150,17 +161,27 @@ function dealInitialCards(room, roomCode) {
     });
   }
 
-  // first discard card
+  // First discard card (avoid wilds as first card if possible)
   let first = drawOne(room);
   if (!first) {
     first = { id: 9999, color: "red", value: 0, type: "number" };
   }
+  // If first is wild / wild4, force a color so clients don't get weird UI
+  if (first.type === "wild" || first.type === "wild4") {
+    first.color = ["red", "yellow", "green", "blue"][Math.floor(Math.random() * 4)];
+  }
   room.discardPile.push(first);
 
-  // random starter
+  // Random starter
   const starterIndex = Math.random() < 0.5 ? 0 : 1;
   room.currentTurn = room.players[starterIndex];
-  room.message = "Game started!";
+  room.message = "🃏 Game started!";
+  room.lastMoveAt = Date.now();
+
+  sendGameState(roomCode);
+
+  // After first state push, switch to playing
+  room.phase = "playing";
   setTurnTimer(roomCode);
 }
 
@@ -168,7 +189,7 @@ function sendGameState(roomCode) {
   const room = rooms[roomCode];
   if (!room) return;
 
-  const top = room.discardPile[room.discardPile.length - 1];
+  const top = room.discardPile[room.discardPile.length - 1] || null;
 
   room.players.forEach((playerId, index) => {
     if (!playerId) return;
@@ -177,15 +198,24 @@ function sendGameState(roomCode) {
 
     const opponentIndex = index === 0 ? 1 : 0;
     const opponentId = room.players[opponentIndex];
+
     const yourHand = room.hands[playerId] || [];
     const opponentCount = opponentId ? (room.hands[opponentId] || []).length : 0;
 
     socket.emit("gameState", {
       roomCode,
       youAre: index === 0 ? "P1" : "P2",
+
+      // ✅ NEW: stable fields so client never guesses
+      gameId: room.gameId || 0,
+      phase: room.phase || "waiting",
+      lastMoveAt: room.lastMoveAt || null,
+      specialEffect: room.specialEffect || null,
+
+      // existing
       yourHand,
       opponentCardCount: opponentCount,
-      discardTop: top || null,
+      discardTop: top,
       deckCount: room.deck.length,
       currentTurn: room.currentTurn,
       isGameOver: room.isGameOver,
@@ -197,18 +227,19 @@ function sendGameState(roomCode) {
 
 // Apply UNO penalty if needed.
 // Called right after a card is removed from hand but before win check.
-function maybeApplyUnoPenalty(room, playerId, hand, beforePenaltyCount) {
+function maybeApplyUnoPenalty(room, playerId, hand, afterPlayCount) {
   const unoCalled = !!room.unoStatus[playerId];
   room.unoStatus[playerId] = false; // consume UNO if it was called
 
-  // They just went down to 1 card (from 2 to 1) and DIDN'T call UNO
-  if (beforePenaltyCount === 1 && !unoCalled) {
+  // They just went down to 1 card (meaning afterPlayCount === 1) and DIDN'T call UNO
+  if (afterPlayCount === 1 && !unoCalled) {
     const penaltyCards = 2;
     for (let i = 0; i < penaltyCards; i++) {
       const penaltyCard = drawOne(room);
       if (penaltyCard) hand.push(penaltyCard);
     }
-    room.message = "Penalty! You did not yell UNO. You draw 2 cards.";
+    room.message = "⚠️ Penalty! You did not yell UNO. You draw 2 cards.";
+    room.lastMoveAt = Date.now();
   }
 }
 
@@ -236,6 +267,11 @@ io.on("connection", (socket) => {
       unoStatus: {}, // playerId -> bool
       specialEffect: null,
       turnTimeout: null,
+
+      // ✅ NEW
+      gameId: 0,
+      phase: "waiting",
+      lastMoveAt: Date.now(),
     };
 
     socket.join(code);
@@ -256,10 +292,10 @@ io.on("connection", (socket) => {
 
     room.players[1] = socket.id;
     room.message = "Both players connected. Dealing cards...";
+    room.lastMoveAt = Date.now();
     socket.join(roomCode);
 
     dealInitialCards(room, roomCode);
-    sendGameState(roomCode);
   });
 
   socket.on("playCard", ({ roomCode, cardId, chosenColor }) => {
@@ -299,25 +335,24 @@ io.on("connection", (socket) => {
 
     // Remove from hand
     hand.splice(index, 1);
-    const beforePenaltyCount = hand.length; // cards LEFT after playing
 
     // Put on discard pile
     room.discardPile.push(card);
 
-    // Reset special effect unless this is a wild4
+    // special effect
     room.specialEffect = null;
-    if (card.type === "wild4") {
-      room.specialEffect = "wild4";
-    }
+    if (card.type === "wild4") room.specialEffect = "wild4";
 
-    // UNO penalty check
-    maybeApplyUnoPenalty(room, socket.id, hand, beforePenaltyCount);
+    // UNO penalty check (afterPlayCount = hand.length)
+    maybeApplyUnoPenalty(room, socket.id, hand, hand.length);
 
     // Win check AFTER possible penalty
     if (hand.length === 0) {
       room.isGameOver = true;
       room.winner = socket.id;
-      room.message = "Game over!";
+      room.phase = "gameover";
+      room.message = "🏁 Game over!";
+      room.lastMoveAt = Date.now();
 
       if (room.turnTimeout) {
         clearTimeout(room.turnTimeout);
@@ -328,7 +363,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Opponent for action effects
     const opponentId = room.players.find((id) => id && id !== socket.id);
 
     // Action effects
@@ -347,19 +381,17 @@ io.on("connection", (socket) => {
     }
 
     // Who goes next?
+    // (in 2-player UNO: reverse behaves like skip, so you go again — your logic is fine)
     const turnAgain =
       card.type === "skip" ||
       card.type === "reverse" ||
       card.type === "draw2" ||
       card.type === "wild4";
 
-    if (turnAgain) {
-      room.currentTurn = socket.id;
-    } else {
-      room.currentTurn = opponentId || socket.id;
-    }
-
+    room.currentTurn = turnAgain ? socket.id : (opponentId || socket.id);
     room.message = `Player played ${describeCard(card)}`;
+    room.lastMoveAt = Date.now();
+
     sendGameState(roomCode);
     setTurnTimer(roomCode);
   });
@@ -380,6 +412,7 @@ io.on("connection", (socket) => {
     const drawn = drawOne(room);
     if (!drawn) {
       room.message = "No cards left to draw.";
+      room.lastMoveAt = Date.now();
       sendGameState(roomCode);
       return;
     }
@@ -390,29 +423,27 @@ io.on("connection", (socket) => {
 
     const top = room.discardPile[room.discardPile.length - 1];
 
-    // AUTO-PLAY LOGIC:
-    // If the drawn card is playable AND not a wild/wild4, auto-play it.
-    const canAutoPlay =
-      drawn.type !== "wild" && drawn.type !== "wild4" && canPlay(drawn, top);
+    // AUTO-PLAY:
+    // If drawn is playable AND not wild/wild4, auto-play it.
+    const canAutoPlay = drawn.type !== "wild" && drawn.type !== "wild4" && canPlay(drawn, top);
 
     if (canAutoPlay) {
-      // Remove it back from hand and treat like a play
+      // Remove it back from hand
       const idx = hand.findIndex((c) => c.id === drawn.id);
-      if (idx !== -1) {
-        hand.splice(idx, 1);
-      }
-      const beforePenaltyCount = hand.length;
+      if (idx !== -1) hand.splice(idx, 1);
 
       room.discardPile.push(drawn);
 
-      // UNO penalty check for auto-play
-      maybeApplyUnoPenalty(room, socket.id, hand, beforePenaltyCount);
+      // UNO penalty for auto-play
+      maybeApplyUnoPenalty(room, socket.id, hand, hand.length);
 
       // Win check
       if (hand.length === 0) {
         room.isGameOver = true;
         room.winner = socket.id;
-        room.message = "Game over!";
+        room.phase = "gameover";
+        room.message = "🏁 Game over!";
+        room.lastMoveAt = Date.now();
 
         if (room.turnTimeout) {
           clearTimeout(room.turnTimeout);
@@ -433,29 +464,24 @@ io.on("connection", (socket) => {
         }
       }
 
-      // skip / reverse / draw2 give another turn
-      const turnAgain =
-        drawn.type === "skip" ||
-        drawn.type === "reverse" ||
-        drawn.type === "draw2";
+      // reverse/skip/draw2 give another turn (in 2-player, reverse behaves like skip)
+      const turnAgain = drawn.type === "skip" || drawn.type === "reverse" || drawn.type === "draw2";
 
-      if (turnAgain) {
-        room.currentTurn = socket.id;
-        room.message = `You drew and auto-played ${describeCard(drawn)}. You go again.`;
-      } else {
-        room.currentTurn = opponentId || socket.id;
-        room.message = `You drew and auto-played ${describeCard(drawn)}.`;
-      }
+      room.currentTurn = turnAgain ? socket.id : (opponentId || socket.id);
+      room.message = turnAgain
+        ? `You drew and auto-played ${describeCard(drawn)}. You go again.`
+        : `You drew and auto-played ${describeCard(drawn)}.`;
 
+      room.lastMoveAt = Date.now();
       sendGameState(roomCode);
       setTurnTimer(roomCode);
       return;
     }
 
-    // If we didn't auto-play (wild or not playable), pass turn like before
+    // If we didn't auto-play (wild or not playable), pass turn
     room.message = "Player drew a card.";
-    const other = room.players.find((id) => id && id !== socket.id);
-    room.currentTurn = other || socket.id;
+    room.currentTurn = room.players.find((id) => id && id !== socket.id) || socket.id;
+    room.lastMoveAt = Date.now();
 
     sendGameState(roomCode);
     setTurnTimer(roomCode);
@@ -474,11 +500,13 @@ io.on("connection", (socket) => {
 
     room.unoStatus[socket.id] = true;
     room.message = "UNO! A player yelled UNO!";
+    room.lastMoveAt = Date.now();
     sendGameState(roomCode);
   });
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
+
     Object.keys(rooms).forEach((code) => {
       const room = rooms[code];
       if (!room) return;
@@ -486,6 +514,8 @@ io.on("connection", (socket) => {
       if (room.players.includes(socket.id)) {
         room.message = "Opponent disconnected. Game over.";
         room.isGameOver = true;
+        room.phase = "gameover";
+        room.lastMoveAt = Date.now();
 
         if (room.turnTimeout) {
           clearTimeout(room.turnTimeout);
