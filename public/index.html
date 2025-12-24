@@ -79,7 +79,6 @@
     .pile{text-align:center;}
     .pile-title{margin-bottom:8px;font-size:0.9rem;opacity:0.75;}
 
-    /* Big discard slot */
     .discard-slot{
       width:200px;
       height:290px;
@@ -121,7 +120,7 @@
     .color-btn.green{background:#22c55e;}
     .color-btn.blue{background:#3b82f6;}
 
-    /* ✅ Hover uses luminance + matching glow (no blue hover) */
+    /* Hover uses luminance + matching glow (no blue hover) */
     .color-btn:hover{
       transform:translateY(-1px) scale(1.06);
       filter:brightness(1.18) saturate(1.12);
@@ -172,12 +171,13 @@
     .card.back{
       background: linear-gradient(135deg, #111827, #020617);
       border-color:#e5e7eb;color:#e5e7eb;font-size:1rem;letter-spacing:1px;cursor:default;
+      position:relative;
     }
     .card.back::before{
       content:"";position:absolute;inset:5px;border-radius:8px;border:2px solid #e5e7eb;opacity:0.75;
     }
 
-    /* Hands + NEW timer border */
+    /* Hands + snake timer ring */
     .hand{margin-bottom:14px;}
     .hand h2{margin:10px 0 6px;font-size:1rem;display:flex;align-items:center;justify-content:space-between;}
 
@@ -191,17 +191,43 @@
     }
 
     .hand-frame{
+      position:relative;
       border-radius:16px;
       padding:10px;
       border:3px solid rgba(255,255,255,0.10);
       background: rgba(255,255,255,0.015);
       transition: border-color 0.12s ease, box-shadow 0.12s ease;
+      --p: 0;   /* 0..1 remaining fraction */
+      --h: 120; /* hue (green->red) */
     }
 
-    /* We’ll set these dynamically from JS */
-    .hand-frame.active{
-      border-width:5px;
-      box-shadow: 0 0 0 6px rgba(255,255,255,0.05);
+    /* "Snake" ring that shrinks as --p decreases */
+    .hand-frame.active::before{
+      content:"";
+      position:absolute;
+      inset:-8px;
+      border-radius:22px;
+      padding:8px;
+
+      /* Only the "snake" segment is visible, rest is transparent */
+      background:
+        conic-gradient(
+          from -90deg,
+          hsla(var(--h), 92%, 55%, 0.95) 0turn calc(var(--p) * 1turn),
+          rgba(0,0,0,0) calc(var(--p) * 1turn) 1turn
+        );
+
+      /* Punch a hole so it's a ring */
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+
+      /* IMPORTANT: don't block clicks */
+      pointer-events:none;
+
+      filter: drop-shadow(0 0 10px hsla(var(--h), 92%, 55%, 0.22));
     }
 
     @keyframes wild4Shake{
@@ -376,9 +402,9 @@
       let lastGameOver = false;
       let lastEffectKey = null;
 
-      // turn countdown UI
-      let activeCountdownInterval = null;
+      // countdown UI loop
       let latestState = null;
+      let activeCountdownInterval = null;
 
       const TURN_SECONDS = 20;
 
@@ -445,6 +471,7 @@
         playerCardsEl.innerHTML = "";
         cardsSorted.forEach((card)=>{
           const el = renderCard(card, false);
+
           if(clickable){
             el.classList.add("player-card");
             el.addEventListener("click", async ()=>{
@@ -462,6 +489,7 @@
             el.style.opacity = "0.92";
             el.style.cursor = "default";
           }
+
           playerCardsEl.appendChild(el);
         });
       }
@@ -478,26 +506,24 @@
         setTimeout(()=>gameRoot.classList.remove("wild4-impact"), 650);
       }
 
-      // Color interpolation green->red by time remaining
-      function setActiveBorder(frameEl, timerEl, secondsRemaining){
-        const pct = Math.max(0, Math.min(1, secondsRemaining / TURN_SECONDS)); // 1 -> full time, 0 -> expired
-        const hue = 120 * pct; // 120=green, 0=red
-        const color = `hsl(${hue}, 90%, 50%)`;
-
-        frameEl.classList.add("active");
-        frameEl.style.borderColor = color;
-        frameEl.style.boxShadow = `0 0 0 6px rgba(255,255,255,0.04), 0 0 0 10px hsla(${hue}, 90%, 50%, 0.15)`;
-
-        timerEl.textContent = `⏱ ${Math.ceil(secondsRemaining)}s`;
-        timerEl.style.color = color;
-      }
-
-      function clearActiveBorder(frameEl, timerEl){
+      function clearActive(frameEl, timerEl){
         frameEl.classList.remove("active");
-        frameEl.style.borderColor = "";
-        frameEl.style.boxShadow = "";
+        frameEl.style.removeProperty("--p");
+        frameEl.style.removeProperty("--h");
         timerEl.textContent = "";
         timerEl.style.color = "";
+      }
+
+      function setActiveSnake(frameEl, timerEl, remaining){
+        const pct = Math.max(0, Math.min(1, remaining / TURN_SECONDS)); // 1->full time
+        const hue = 120 * pct; // green->red
+        frameEl.classList.add("active");
+        frameEl.style.setProperty("--p", pct.toFixed(4));
+        frameEl.style.setProperty("--h", hue.toFixed(1));
+
+        const color = `hsl(${hue}, 92%, 55%)`;
+        timerEl.textContent = `⏱ ${Math.ceil(remaining)}s`;
+        timerEl.style.color = color;
       }
 
       function stopCountdownLoop(){
@@ -508,35 +534,31 @@
       }
 
       function startCountdownLoop(){
-        stopCountdownLoop();
-        activeCountdownInterval = setInterval(() => {
+        if(activeCountdownInterval) return;
+        activeCountdownInterval = setInterval(()=>{
           if(!latestState) return;
 
+          clearActive(myFrame, myHandTimer);
+          clearActive(oppFrame, oppHandTimer);
+
           const s = latestState;
-
-          // Clear by default
-          clearActiveBorder(myFrame, myHandTimer);
-          clearActiveBorder(oppFrame, oppHandTimer);
-
           if(s.phase !== "playing" || s.isGameOver || !s.currentTurn || !s.lastMoveAt) return;
 
           const elapsed = (Date.now() - s.lastMoveAt) / 1000;
           const remaining = Math.max(0, TURN_SECONDS - elapsed);
 
-          const isMyTurn = s.currentTurn === mySocketId;
-
-          // If opponent is CPU, still show border on opponent container
-          if(isMyTurn){
-            setActiveBorder(myFrame, myHandTimer, remaining);
-          } else {
-            setActiveBorder(oppFrame, oppHandTimer, remaining);
-          }
-        }, 150);
+          const isMyTurn = (s.currentTurn === mySocketId);
+          if(isMyTurn) setActiveSnake(myFrame, myHandTimer, remaining);
+          else setActiveSnake(oppFrame, oppHandTimer, remaining);
+        }, 120);
       }
 
       async function updateUI(state){
         latestState = state;
         if(!state) return;
+
+        // ✅ CLICK FIX: ensure we always have the right id
+        if(!mySocketId && socket.id) mySocketId = socket.id;
 
         currentRoomCode = state.roomCode;
         roomCodeLabel.textContent = state.roomCode || "—";
@@ -558,7 +580,7 @@
         const oppCount = state.opponentCardCount || 0;
 
         const canInteract = state.phase === "playing" && !state.isGameOver;
-        const isMyTurn = canInteract && state.currentTurn === mySocketId;
+        const isMyTurn = canInteract && (state.currentTurn === mySocketId);
 
         drawButton.disabled = !isMyTurn;
         unoButton.disabled = !(isMyTurn && myCount > 0 && myCount <= 2);
@@ -594,8 +616,7 @@
           await unlockAudioOnce();
           playSound(soundNewHand);
 
-          // If you still have your deal animation version, emit dealDone at the end of it.
-          // This version acks immediately.
+          // ack immediately (if you have deal animation later, emit at end)
           if(currentRoomCode && dealDoneSentForGameId !== state.gameId){
             dealDoneSentForGameId = state.gameId;
             socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
@@ -617,7 +638,6 @@
         lastGameOver = state.isGameOver;
         lastWinner = state.winner || null;
 
-        // Ensure countdown loop is running
         startCountdownLoop();
       }
 
@@ -662,10 +682,14 @@
       });
 
       socket.on("connect", ()=> { mySocketId = socket.id; });
+
       socket.on("roomCreated", ({ roomCode, youAre })=>{
         currentRoomCode = roomCode;
         roomCodeLabel.textContent = roomCode;
         youAreLabel.textContent = youAre;
+        // ✅ also set here (extra safety)
+        if(socket.id) mySocketId = socket.id;
+
         showMessage(`Room created. Code: ${roomCode}`);
         lastGameId = null;
         dealDoneSentForGameId = null;
