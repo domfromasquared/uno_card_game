@@ -4,10 +4,19 @@
   <meta charset="UTF-8" />
   <title>Online UNO (2-Player)</title>
   <script src="/socket.io/socket.io.js"></script>
+
   <style>
+    :root {
+      --bg: #16171b;
+      --panel: #1f2127;
+      --muted: rgba(255,255,255,0.75);
+      --muted2: rgba(255,255,255,0.55);
+      --accent: #f97316;
+    }
+
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #16171b;
+      background: var(--bg);
       color: #f5f5f5;
       margin: 0;
       display: flex;
@@ -18,12 +27,14 @@
     }
 
     .game {
-      background: #1f2127;
-      border-radius: 12px;
+      position: relative;
+      background: var(--panel);
+      border-radius: 14px;
       padding: 20px 24px 28px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      max-width: 900px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      max-width: 980px;
       width: 100%;
+      overflow: hidden;
       transition: transform 0.2s ease;
     }
 
@@ -51,9 +62,7 @@
       outline: none;
     }
 
-    input::placeholder {
-      color: #6b7280;
-    }
+    input::placeholder { color: #6b7280; }
 
     button {
       border-radius: 999px;
@@ -61,7 +70,7 @@
       padding: 8px 16px;
       background: #3b82f6;
       color: white;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       font-size: 0.9rem;
       transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease;
@@ -69,7 +78,7 @@
 
     button:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
       background: #2563eb;
     }
 
@@ -80,14 +89,22 @@
       transform: none;
     }
 
-    #status {
+    .info-line {
       text-align: center;
-      margin-bottom: 8px;
-      font-size: 0.95rem;
-      min-height: 1.5em;
+      font-size: 0.92rem;
+      opacity: 0.85;
+      margin-bottom: 6px;
     }
 
-    /* TURN TIMER BAR */
+    #status {
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 0.98rem;
+      min-height: 1.5em;
+      color: rgba(255,255,255,0.92);
+    }
+
+    /* PROMINENT TURN TIMER */
     #turnTimerBar {
       display: flex;
       justify-content: center;
@@ -96,71 +113,66 @@
     }
 
     #turnTimerBox {
-      min-width: 220px;
-      padding: 8px 16px;
+      min-width: 260px;
+      padding: 10px 18px;
       border-radius: 999px;
       background: #111827;
-      border: 2px solid #f97316;
+      border: 2px solid var(--accent);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 8px;
-      font-weight: 600;
-      font-size: 0.95rem;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
     }
 
-    #turnTimerLabel {
-      opacity: 0.8;
-    }
+    #turnTimerLabel { opacity: 0.85; }
 
     #turnTimerValue {
-      font-size: 1.2rem;
+      font-size: 1.25rem;
+      letter-spacing: 0.5px;
     }
-
-    #turnTimerValue.danger {
-      color: #f97316;
-    }
+    #turnTimerValue.danger { color: var(--accent); }
 
     .board {
       display: flex;
       justify-content: center;
-      gap: 40px;
-      margin-bottom: 20px;
+      gap: 46px;
+      margin-bottom: 18px;
       align-items: center;
+      flex-wrap: wrap;
     }
 
-    .pile {
-      text-align: center;
-    }
+    .pile { text-align: center; }
 
     .pile-title {
       margin-bottom: 6px;
       font-size: 0.9rem;
-      opacity: 0.7;
+      opacity: 0.75;
     }
 
     #deckCount {
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       opacity: 0.7;
-      margin-top: 4px;
+      margin-top: 6px;
     }
 
     .card-slot {
-      width: 80px;
-      height: 120px;
-      border-radius: 10px;
+      width: 90px;
+      height: 130px;
+      border-radius: 12px;
       border: 2px dashed #444;
       display: flex;
       align-items: center;
       justify-content: center;
+      background: rgba(255,255,255,0.02);
     }
 
-    .hand {
-      margin-bottom: 16px;
-    }
+    .hand { margin-bottom: 16px; }
 
     .hand h2 {
-      margin: 8px 0;
+      margin: 10px 0 8px;
       font-size: 1rem;
       display: flex;
       align-items: center;
@@ -172,9 +184,9 @@
       flex-wrap: wrap;
       gap: 8px;
       min-height: 130px;
-      padding: 8px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
     }
 
     .card {
@@ -184,58 +196,43 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
+      font-weight: 900;
       font-size: 1.2rem;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
       border: 3px solid #f5f5f5;
       box-sizing: border-box;
       position: relative;
-      cursor: pointer;
       user-select: none;
       transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease;
     }
 
+    .card.player-card {
+      cursor: pointer;
+    }
+
     .card.player-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.6);
       filter: brightness(1.05);
     }
 
     .card .value {
-      text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+      text-shadow: 0 2px 3px rgba(0,0,0,0.6);
     }
 
     .card.action .value {
-      font-size: 1rem;
+      font-size: 0.95rem;
       text-align: center;
       padding: 0 4px;
     }
 
-    .card.red {
-      background: #ef4444;
-    }
-
-    .card.yellow {
-      background: #eab308;
-      color: #111827;
-    }
-
-    .card.green {
-      background: #22c55e;
-    }
-
-    .card.blue {
-      background: #3b82f6;
-    }
+    .card.red { background: #ef4444; }
+    .card.yellow { background: #eab308; color: #111827; }
+    .card.green { background: #22c55e; }
+    .card.blue { background: #3b82f6; }
 
     .card.wild {
-      background: radial-gradient(
-        circle at 10% 20%,
-        #ef4444 0,
-        #eab308 30%,
-        #22c55e 60%,
-        #3b82f6 100%
-      );
+      background: radial-gradient(circle at 10% 20%, #ef4444 0, #eab308 30%, #22c55e 60%, #3b82f6 100%);
       border-color: #f9fafb;
     }
 
@@ -257,13 +254,6 @@
       opacity: 0.75;
     }
 
-    .info-line {
-      text-align: center;
-      font-size: 0.9rem;
-      opacity: 0.8;
-      margin-bottom: 4px;
-    }
-
     .uno-row {
       display: flex;
       justify-content: center;
@@ -276,79 +266,91 @@
       display: none;
       justify-content: center;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       margin-bottom: 16px;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      opacity: 0.95;
     }
 
     .color-btn {
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 999px;
       border: 2px solid #f9fafb;
       padding: 0;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
     }
 
-    .color-btn.red {
-      background: #ef4444;
-    }
-
-    .color-btn.yellow {
-      background: #eab308;
-    }
-
-    .color-btn.green {
-      background: #22c55e;
-    }
-
-    .color-btn.blue {
-      background: #3b82f6;
-    }
+    .color-btn.red { background: #ef4444; }
+    .color-btn.yellow { background: #eab308; }
+    .color-btn.green { background: #22c55e; }
+    .color-btn.blue { background: #3b82f6; }
 
     /* Wild +4 impact animation */
     @keyframes wild4Shake {
-      0% {
-        transform: translate(0, 0) scale(1);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      }
-      20% {
-        transform: translate(-4px, 2px) scale(1.02);
-        box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7);
-      }
-      40% {
-        transform: translate(4px, -2px) scale(1.03);
-      }
-      60% {
-        transform: translate(-3px, 1px) scale(1.02);
-      }
-      80% {
-        transform: translate(3px, -1px) scale(1.01);
-      }
-      100% {
-        transform: translate(0, 0) scale(1);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      }
+      0% { transform: translate(0,0) scale(1); }
+      20% { transform: translate(-5px,2px) scale(1.02); }
+      40% { transform: translate(5px,-2px) scale(1.03); }
+      60% { transform: translate(-4px,1px) scale(1.02); }
+      80% { transform: translate(4px,-1px) scale(1.01); }
+      100% { transform: translate(0,0) scale(1); }
     }
 
-    .wild4-impact {
-      animation: wild4Shake 0.5s ease;
+    .wild4-impact { animation: wild4Shake 0.55s ease; }
+
+    /* Deal animation layer */
+    #dealLayer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
     }
 
-    @media (max-width: 700px) {
-      .board {
-        flex-direction: column;
-        gap: 16px;
-      }
+    .deal-card {
+      position: absolute;
+      width: 56px;
+      height: 82px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #111827, #020617);
+      border: 2px solid rgba(255,255,255,0.85);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.55);
+      transform: translate(-50%, -50%) rotate(0deg) scale(1);
+      opacity: 0.98;
+    }
+
+    .deal-card::after {
+      content: "UNO";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.9);
+      font-size: 0.9rem;
+    }
+
+    /* During dealing, dim interactions a bit */
+    .is-dealing {
+      filter: saturate(0.95);
+    }
+
+    @media (max-width: 760px) {
       .card {
         width: 58px;
         height: 85px;
         font-size: 1rem;
       }
+      #turnTimerBox { min-width: 220px; }
+      .card-slot { width: 86px; height: 126px; }
     }
   </style>
 </head>
+
 <body>
-  <div class="game">
+  <div class="game" id="gameRoot">
     <h1>Online UNO (2-Player)</h1>
 
     <div class="top-bar">
@@ -364,7 +366,6 @@
 
     <div id="status"></div>
 
-    <!-- PROMINENT TURN TIMER -->
     <div id="turnTimerBar">
       <div id="turnTimerBox">
         <span id="turnTimerLabel">Turn timer</span>
@@ -410,26 +411,21 @@
       <div id="playerCards" class="cards-row"></div>
     </div>
 
-    <!-- Victory sound -->
-    <audio id="victorySound" src="awesome.mp3" preload="auto"></audio>
+    <!-- Deal animation layer -->
+    <div id="dealLayer"></div>
+
+    <!-- Sounds -->
+    <audio id="soundNewHand" src="new_hand.mp3" preload="auto"></audio>
+    <audio id="soundWildImpact" src="wild_impact.mp3" preload="auto"></audio>
+    <audio id="soundWin" src="success_1.mp3" preload="auto"></audio>
+    <audio id="soundAwesome" src="awesome.mp3" preload="auto"></audio>
   </div>
 
   <script>
     const socket = io();
 
-    let currentRoomCode = null;
-    let currentTurn = null;
-    let mySocketId = null;
-    let pendingWildCardId = null;
-    let lastGameOver = false;
-    let lastWinner = null;
-    let lastWild4CardId = null;
-
-    // Timer state
-    let turnSecondsRemaining = null;
-    let turnTimerInterval = null;
-    let lastTurnKey = null; // roomCode + currentTurn combo to detect new turns
-
+    // ---------- DOM ----------
+    const gameRoot = document.getElementById("gameRoot");
     const statusEl = document.getElementById("status");
     const roomCodeLabel = document.getElementById("roomCodeLabel");
     const youAreLabel = document.getElementById("youAreLabel");
@@ -442,10 +438,77 @@
     const unoButton = document.getElementById("unoButton");
     const colorPicker = document.getElementById("colorPicker");
     const colorButtons = document.querySelectorAll(".color-btn");
-    const victorySound = document.getElementById("victorySound");
-    const gameEl = document.querySelector(".game");
     const timerValueEl = document.getElementById("turnTimerValue");
+    const dealLayer = document.getElementById("dealLayer");
 
+    // Sounds
+    const soundNewHand = document.getElementById("soundNewHand");
+    const soundWildImpact = document.getElementById("soundWildImpact");
+    const soundWin = document.getElementById("soundWin");
+    const soundAwesome = document.getElementById("soundAwesome");
+
+    function playSound(audio) {
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
+
+    // ---------- STATE ----------
+    let currentRoomCode = null;
+    let currentTurn = null;
+    let mySocketId = null;
+    let pendingWildCardId = null;
+
+    // For timer display
+    let turnSecondsRemaining = null;
+    let turnTimerInterval = null;
+    let lastTurnKey = null;
+
+    // For effects + sounds
+    let lastWinner = null;
+    let lastGameOver = false;
+    let lastWild4TopId = null;
+
+    // For deal animation
+    let lastHandSize = null;
+    let lastOppCount = null;
+    let isDealing = false;
+
+    // ---------- CARD SORT ----------
+    // You asked: sort by color then number.
+    // We do: color order -> numbers -> action cards -> wilds last.
+    const colorOrder = { red: 0, yellow: 1, green: 2, blue: 3 };
+    const typeOrder = { number: 0, skip: 1, reverse: 2, draw2: 3, wild: 4, wild4: 5 };
+
+    function sortHand(cards) {
+      const arr = (cards || []).slice();
+      arr.sort((a, b) => {
+        // wilds last
+        const aWild = a.type === "wild" || a.type === "wild4";
+        const bWild = b.type === "wild" || b.type === "wild4";
+        if (aWild !== bWild) return aWild ? 1 : -1;
+
+        // color first
+        const ac = colorOrder[a.color] ?? 99;
+        const bc = colorOrder[b.color] ?? 99;
+        if (ac !== bc) return ac - bc;
+
+        // type order (numbers before actions)
+        const at = typeOrder[a.type] ?? 99;
+        const bt = typeOrder[b.type] ?? 99;
+        if (at !== bt) return at - bt;
+
+        // number value
+        const av = a.type === "number" ? (a.value ?? 99) : 99;
+        const bv = b.type === "number" ? (b.value ?? 99) : 99;
+        if (av !== bv) return av - bv;
+
+        return (a.id ?? 0) - (b.id ?? 0);
+      });
+      return arr;
+    }
+
+    // ---------- UI HELPERS ----------
     function showMessage(msg) {
       statusEl.textContent = msg || "";
     }
@@ -453,7 +516,6 @@
     function renderCard(card) {
       const el = document.createElement("div");
 
-      // Decide color class
       let colorClass = card.color;
       if ((card.type === "wild" || card.type === "wild4") && !card.color) {
         colorClass = "wild";
@@ -464,19 +526,12 @@
       if (card.type !== "number") el.classList.add("action");
 
       let label;
-      if (card.type === "number") {
-        label = card.value;
-      } else if (card.type === "skip") {
-        label = "Skip";
-      } else if (card.type === "reverse") {
-        label = "Reverse";
-      } else if (card.type === "draw2") {
-        label = "+2";
-      } else if (card.type === "wild") {
-        label = "Wild";
-      } else if (card.type === "wild4") {
-        label = "W+4";
-      }
+      if (card.type === "number") label = card.value;
+      else if (card.type === "skip") label = "Skip";
+      else if (card.type === "reverse") label = "Reverse";
+      else if (card.type === "draw2") label = "+2";
+      else if (card.type === "wild") label = "Wild";
+      else if (card.type === "wild4") label = "W+4";
 
       const span = document.createElement("span");
       span.classList.add("value");
@@ -490,60 +545,33 @@
       pendingWildCardId = null;
     }
 
-    function handleVictorySound(state) {
-      if (
-        state.isGameOver &&
-        state.winner &&
-        (!lastGameOver || state.winner !== lastWinner)
-      ) {
-        if (victorySound) {
-          victorySound.currentTime = 0;
-          victorySound.play().catch(() => {
-            // autoplay might be blocked; that's fine
-          });
-        }
-      }
-      lastGameOver = state.isGameOver;
-      lastWinner = state.winner || null;
-    }
-
+    // ---------- WILD4 IMPACT ----------
     function triggerWild4Effect() {
-      if (!gameEl) return;
-      gameEl.classList.remove("wild4-impact");
-      // Force reflow so animation can restart
-      void gameEl.offsetWidth;
-      gameEl.classList.add("wild4-impact");
-      setTimeout(() => {
-        gameEl.classList.remove("wild4-impact");
-      }, 600);
+      gameRoot.classList.remove("wild4-impact");
+      void gameRoot.offsetWidth; // restart animation
+      gameRoot.classList.add("wild4-impact");
+      setTimeout(() => gameRoot.classList.remove("wild4-impact"), 650);
     }
 
-    // ---- TURN TIMER UI LOGIC ----
+    // ---------- TURN TIMER UI ----------
     function stopTurnTimer() {
       if (turnTimerInterval) {
         clearInterval(turnTimerInterval);
         turnTimerInterval = null;
       }
       turnSecondsRemaining = null;
-      if (timerValueEl) {
-        timerValueEl.textContent = "--";
-        timerValueEl.classList.remove("danger");
-      }
+      timerValueEl.textContent = "--";
+      timerValueEl.classList.remove("danger");
     }
 
     function startTurnTimerForState(state) {
-      if (!timerValueEl) return;
-
       if (state.isGameOver || !state.currentTurn) {
         stopTurnTimer();
         return;
       }
 
       const key = `${state.roomCode || ""}|${state.currentTurn}`;
-      if (key === lastTurnKey && turnSecondsRemaining !== null) {
-        // Same turn, keep counting
-        return;
-      }
+      if (key === lastTurnKey && turnSecondsRemaining !== null) return;
 
       lastTurnKey = key;
       stopTurnTimer();
@@ -562,19 +590,121 @@
           turnTimerInterval = null;
         } else {
           timerValueEl.textContent = `${turnSecondsRemaining}s`;
-          if (turnSecondsRemaining <= 5) {
-            timerValueEl.classList.add("danger");
-          } else {
-            timerValueEl.classList.remove("danger");
-          }
+          if (turnSecondsRemaining <= 5) timerValueEl.classList.add("danger");
+          else timerValueEl.classList.remove("danger");
         }
       }, 1000);
     }
 
+    // ---------- DEAL ANIMATION ----------
+    function getCenter(el) {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+
+    function sleep(ms) {
+      return new Promise((res) => setTimeout(res, ms));
+    }
+
+    async function animateDeal() {
+      if (isDealing) return;
+      isDealing = true;
+      gameRoot.classList.add("is-dealing");
+      hideColorPicker();
+
+      // Disable buttons during deal
+      drawButton.disabled = true;
+      unoButton.disabled = true;
+
+      // start point: draw button
+      const start = getCenter(drawButton);
+
+      // target areas: opponent row + player row
+      const oppTarget = getCenter(opponentCardsEl);
+      const myTarget = getCenter(playerCardsEl);
+
+      // Create 14 flying cards: alternate opp/my, 7 each
+      const totalPerPlayer = 7;
+      const total = totalPerPlayer * 2;
+
+      // Make layer coordinates match viewport; use fixed positions
+      // We'll set absolute positions in viewport space (pageX/pageY).
+      // Deal cards with slight fanning randomness.
+      for (let i = 0; i < total; i++) {
+        const toOpponent = i % 2 === 0; // alternate
+        const target = toOpponent ? oppTarget : myTarget;
+
+        const card = document.createElement("div");
+        card.className = "deal-card";
+        dealLayer.appendChild(card);
+
+        // Initial position
+        card.style.left = `${start.x}px`;
+        card.style.top = `${start.y}px`;
+
+        // Animate using Web Animations API
+        const fanX = (Math.random() * 80 - 40);
+        const fanY = (Math.random() * 30 - 15);
+        const rot = (Math.random() * 30 - 15);
+
+        const anim = card.animate(
+          [
+            { transform: `translate(-50%, -50%) rotate(0deg) scale(1)`, offset: 0, opacity: 1 },
+            { transform: `translate(-50%, -50%) rotate(${rot}deg) scale(1.03)`, offset: 0.35, opacity: 1 },
+            { transform: `translate(-50%, -50%) rotate(${rot}deg) scale(1)`, offset: 1, opacity: 1 }
+          ],
+          { duration: 320, easing: "cubic-bezier(.2,.8,.2,1)" }
+        );
+
+        // Move position over time (manual tween)
+        const startX = start.x, startY = start.y;
+        const endX = target.x + fanX, endY = target.y + fanY;
+
+        const t0 = performance.now();
+        const duration = 320;
+
+        function step(now) {
+          const t = Math.min(1, (now - t0) / duration);
+          // easeOut
+          const e = 1 - Math.pow(1 - t, 3);
+          card.style.left = `${startX + (endX - startX) * e}px`;
+          card.style.top = `${startY + (endY - startY) * e}px`;
+          if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+
+        await sleep(65); // spacing between cards
+        await anim.finished.catch(() => {});
+        // fade out quickly after arrival
+        card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-out" });
+        await sleep(120);
+        card.remove();
+      }
+
+      gameRoot.classList.remove("is-dealing");
+      isDealing = false;
+    }
+
+    function shouldTriggerDealAnimation(myHandCount, oppCount, state) {
+      // Trigger when we detect fresh deal: both players have 7
+      // and previously we did NOT have 7 (or were null).
+      if (!state || state.isGameOver) return false;
+
+      const nowMy7 = myHandCount === 7;
+      const nowOpp7 = oppCount === 7;
+
+      const previouslyNotDealt =
+        (lastHandSize === null || lastHandSize === 0 || lastHandSize !== 7) &&
+        (lastOppCount === null || lastOppCount === 0 || lastOppCount !== 7);
+
+      return nowMy7 && nowOpp7 && previouslyNotDealt;
+    }
+
+    // ---------- MAIN UI UPDATE ----------
     function updateUI(state) {
       if (!state) return;
 
-      // Reset any leftover color picker on state update
+      // Always hide picker on refresh (unless player is actively choosing)
       hideColorPicker();
 
       currentRoomCode = state.roomCode;
@@ -588,51 +718,27 @@
           ? `${state.deckCount} card${state.deckCount === 1 ? "" : "s"} left`
           : "";
 
+      // Discard pile
       discardTopEl.innerHTML = "";
       if (state.discardTop) {
         const topCardEl = renderCard(state.discardTop);
         discardTopEl.appendChild(topCardEl);
 
-        // Detect new Wild +4 on top and trigger effect
+        // Wild +4 impact (both players)
         if (state.discardTop.type === "wild4") {
-          if (state.discardTop.id !== lastWild4CardId) {
-            lastWild4CardId = state.discardTop.id;
+          if (state.discardTop.id !== lastWild4TopId) {
+            lastWild4TopId = state.discardTop.id;
+            playSound(soundWildImpact);
             triggerWild4Effect();
           }
         } else {
-          lastWild4CardId = null;
+          lastWild4TopId = null;
         }
       } else {
-        lastWild4CardId = null;
+        lastWild4TopId = null;
       }
 
-      // Player hand
-      playerCardsEl.innerHTML = "";
-      const myHand = state.yourHand || [];
-      myHand.forEach((card) => {
-        const cardEl = renderCard(card);
-        cardEl.classList.add("player-card");
-        cardEl.addEventListener("click", () => {
-          if (!currentRoomCode) return;
-
-          // Wild cards use color picker
-          if (card.type === "wild" || card.type === "wild4") {
-            pendingWildCardId = card.id;
-            colorPicker.style.display = "flex";
-            return;
-          }
-
-          // Normal cards play immediately
-          socket.emit("playCard", {
-            roomCode: currentRoomCode,
-            cardId: card.id,
-            chosenColor: null,
-          });
-        });
-        playerCardsEl.appendChild(cardEl);
-      });
-
-      // Opponent (backs only)
+      // Opponent hand (backs)
       opponentCardsEl.innerHTML = "";
       const oppCount = state.opponentCardCount || 0;
       opponentCountEl.textContent = oppCount.toString();
@@ -643,23 +749,67 @@
         opponentCardsEl.appendChild(backEl);
       }
 
-      const isMyTurn = currentTurn === mySocketId;
-      drawButton.disabled = !isMyTurn || state.isGameOver;
+      // Your hand (sorted)
+      const myHandSorted = sortHand(state.yourHand || []);
+      playerCardsEl.innerHTML = "";
 
-      // Enable UNO button if:
-      // - game not over
-      // - your hand has 2 or fewer cards but > 0
-      // - it's your turn
-      if (!state.isGameOver && myHand.length <= 2 && myHand.length > 0 && isMyTurn) {
+      // Deal animation trigger (detect new deal)
+      const myCount = myHandSorted.length;
+      const triggerDeal = shouldTriggerDealAnimation(myCount, oppCount, state);
+      if (triggerDeal) {
+        playSound(soundNewHand);
+        // run animation (non-blocking)
+        animateDeal();
+      }
+
+      // Render your hand
+      myHandSorted.forEach((card) => {
+        const cardEl = renderCard(card);
+        cardEl.classList.add("player-card");
+
+        // Disable play while dealing
+        if (!isDealing) {
+          cardEl.addEventListener("click", () => {
+            if (!currentRoomCode) return;
+
+            // Wild choose color
+            if (card.type === "wild" || card.type === "wild4") {
+              pendingWildCardId = card.id;
+              colorPicker.style.display = "flex";
+              return;
+            }
+
+            socket.emit("playCard", {
+              roomCode: currentRoomCode,
+              cardId: card.id,
+              chosenColor: null
+            });
+          });
+        } else {
+          cardEl.style.opacity = "0.65";
+        }
+
+        playerCardsEl.appendChild(cardEl);
+      });
+
+      // Buttons enabled states
+      const isMyTurn = state.currentTurn === mySocketId;
+
+      // Draw button (disabled if dealing)
+      drawButton.disabled = !isMyTurn || state.isGameOver || isDealing;
+
+      // UNO button enable
+      if (!state.isGameOver && myCount <= 2 && myCount > 0 && isMyTurn && !isDealing) {
         unoButton.disabled = false;
       } else {
         unoButton.disabled = true;
       }
 
+      // Status text
       if (state.isGameOver) {
         const youWon = state.winner === mySocketId;
         showMessage(youWon ? "You win!" : "Opponent wins.");
-      } else if (!currentTurn) {
+      } else if (!state.currentTurn) {
         showMessage(state.message || "Waiting for players...");
       } else if (isMyTurn) {
         showMessage(state.message || "Your turn");
@@ -667,11 +817,32 @@
         showMessage(state.message || "Opponent's turn");
       }
 
-      // Start / update the visual timer
+      // Turn timer display (local countdown)
       startTurnTimerForState(state);
+
+      // Win sounds (play once per game end)
+      if (state.isGameOver && state.winner && (!lastGameOver || state.winner !== lastWinner)) {
+        const winningCard = state.discardTop;
+
+        // If winning card is wild / wild4 → awesome for BOTH
+        if (winningCard && (winningCard.type === "wild" || winningCard.type === "wild4")) {
+          playSound(soundAwesome);
+        }
+
+        // Winner gets success_1
+        if (state.winner === mySocketId) {
+          playSound(soundWin);
+        }
+      }
+
+      // Save last values for next update
+      lastHandSize = myCount;
+      lastOppCount = oppCount;
+      lastGameOver = state.isGameOver;
+      lastWinner = state.winner || null;
     }
 
-    // Buttons
+    // ---------- EVENTS ----------
     document.getElementById("createRoomBtn").addEventListener("click", () => {
       socket.emit("createRoom");
     });
@@ -686,32 +857,32 @@
     });
 
     drawButton.addEventListener("click", () => {
-      if (!currentRoomCode) return;
+      if (!currentRoomCode || isDealing) return;
       socket.emit("drawCard", { roomCode: currentRoomCode });
     });
 
     unoButton.addEventListener("click", () => {
-      if (!currentRoomCode) return;
+      if (!currentRoomCode || isDealing) return;
       socket.emit("yellUno", { roomCode: currentRoomCode });
     });
 
-    // Color picker buttons for wilds
+    // Color picker for wilds
     colorButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
         const color = btn.dataset.color;
-        if (!currentRoomCode || !pendingWildCardId) return;
+        if (!currentRoomCode || !pendingWildCardId || isDealing) return;
 
         socket.emit("playCard", {
           roomCode: currentRoomCode,
           cardId: pendingWildCardId,
-          chosenColor: color,
+          chosenColor: color
         });
 
         hideColorPicker();
       });
     });
 
-    // Socket events
+    // Socket
     socket.on("connect", () => {
       mySocketId = socket.id;
     });
@@ -725,7 +896,6 @@
 
     socket.on("gameState", (state) => {
       updateUI(state);
-      handleVictorySound(state);
     });
 
     socket.on("errorMessage", (msg) => {
