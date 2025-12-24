@@ -1,4 +1,4 @@
-// UNO-like online server using Express + Socket.IO
+// UNO-like online server using Express + Socket.IO (with optional CPU opponent)
 
 const express = require("express");
 const http = require("http");
@@ -12,8 +12,9 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, "public")));
 
 const rooms = {}; // roomCode -> state
+const CPU_ID = "CPU";
 
-// ---- DECK / RULES ----
+// ------------------ DECK / RULES ------------------
 
 function createDeck() {
   const colors = ["red", "yellow", "green", "blue"];
@@ -22,12 +23,10 @@ function createDeck() {
 
   colors.forEach((color) => {
     deck.push({ id: idCounter++, color, value: 0, type: "number" });
-
     for (let v = 1; v <= 9; v++) {
       deck.push({ id: idCounter++, color, value: v, type: "number" });
       deck.push({ id: idCounter++, color, value: v, type: "number" });
     }
-
     ["skip", "reverse", "draw2"].forEach((action) => {
       deck.push({ id: idCounter++, color, value: null, type: action });
       deck.push({ id: idCounter++, color, value: null, type: action });
@@ -64,10 +63,8 @@ function canPlay(card, top) {
   if (!card || !top) return false;
   if (card.type === "wild" || card.type === "wild4") return true;
   if (card.color === top.color) return true;
-
   if (card.type === "number" && top.type === "number" && card.value === top.value) return true;
   if (card.type !== "number" && card.type === top.type) return true;
-
   return false;
 }
 
@@ -81,19 +78,41 @@ function describeCard(card) {
   return `${card.color} ${name}`;
 }
 
-// ---- TURN TIMER ----
+// ------------------ UNO PENALTY ------------------
+
+function maybeApplyUnoPenalty(room, playerId, hand, afterPlayCount) {
+  const unoCalled = !!room.unoStatus[playerId];
+  room.unoStatus[playerId] = false; // consume
+
+  // After playing a card, if they have exactly 1 card left and didn't call UNO -> +2 penalty
+  if (afterPlayCount === 1 && !unoCalled) {
+    for (let i = 0; i < 2; i++) {
+      const penaltyCard = drawOne(room);
+      if (penaltyCard) hand.push(penaltyCard);
+    }
+    room.message = "⚠️ Penalty! You did not yell UNO. You draw 2 cards.";
+    room.lastMoveAt = Date.now();
+  }
+}
+
+// ------------------ TURN TIMER (HUMANS ONLY) ------------------
+
+function clearTurnTimer(room) {
+  if (room.turnTimeout) {
+    clearTimeout(room.turnTimeout);
+    room.turnTimeout = null;
+  }
+}
 
 function setTurnTimer(roomCode) {
   const room = rooms[roomCode];
   if (!room) return;
 
-  if (room.turnTimeout) {
-    clearTimeout(room.turnTimeout);
-    room.turnTimeout = null;
-  }
+  clearTurnTimer(room);
 
-  // ✅ don't run timer until actually "playing"
-  if (!room.currentTurn || room.isGameOver || room.phase !== "playing") return;
+  // Only while playing and only for human turns
+  if (room.phase !== "playing" || room.isGameOver) return;
+  if (!room.currentTurn || room.currentTurn === CPU_ID) return;
 
   const playerToTimeout = room.currentTurn;
 
@@ -110,23 +129,26 @@ function setTurnTimer(roomCode) {
     r.turnTimeout = null;
 
     sendGameState(roomCode);
-    setTurnTimer(roomCode);
+
+    // If next is CPU, let CPU play; else restart timer
+    if (r.currentTurn === CPU_ID) scheduleCpuTurn(roomCode);
+    else setTurnTimer(roomCode);
   }, 20000);
 }
 
-// ---- GAME FLOW ----
+// ------------------ GAME FLOW ------------------
 
 function dealInitialCards(room, roomCode) {
   room.gameId = (room.gameId || 0) + 1;
 
-  room.phase = "dealing";          // ✅ clients animate while in dealing
-  room.dealAcks = {};              // ✅ reset acks per game
-  room.dealAcks[room.gameId] = {}; // playerId -> true
+  room.phase = "dealing";
+  room.dealAcks = room.dealAcks || {};
+  room.dealAcks[room.gameId] = {};
 
   room.deck = createDeck();
   shuffle(room.deck);
-
   room.discardPile = [];
+
   room.isGameOver = false;
   room.winner = null;
   room.unoStatus = room.unoStatus || {};
@@ -137,6 +159,7 @@ function dealInitialCards(room, roomCode) {
     if (pid) room.hands[pid] = [];
   });
 
+  // 7 each
   for (let i = 0; i < 7; i++) {
     room.players.forEach((pid) => {
       if (!pid) return;
@@ -145,6 +168,7 @@ function dealInitialCards(room, roomCode) {
     });
   }
 
+  // First discard card
   let first = drawOne(room);
   if (!first) first = { id: 9999, color: "red", value: 0, type: "number" };
   if (first.type === "wild" || first.type === "wild4") {
@@ -152,26 +176,31 @@ function dealInitialCards(room, roomCode) {
   }
   room.discardPile.push(first);
 
-  // choose starter now, but DON'T start timer until both clients done animating
+  // Choose starter now (timer starts only after deal acks)
   const starterIndex = Math.random() < 0.5 ? 0 : 1;
   room.currentTurn = room.players[starterIndex];
 
   room.message = "🃏 Dealing cards...";
   room.lastMoveAt = Date.now();
 
-  // ✅ do NOT call setTurnTimer here
+  // If CPU room, CPU "acks" instantly
+  if (room.isCpuGame) {
+    room.dealAcks[room.gameId][CPU_ID] = true;
+  }
+
   sendGameState(roomCode);
 }
 
 function startPlayingIfReady(room, roomCode) {
   if (!room || room.isGameOver) return;
+
   const gameId = room.gameId || 0;
   const ackMap = room.dealAcks?.[gameId] || {};
 
   const p1 = room.players[0];
   const p2 = room.players[1];
-  const ready = !!(ackMap[p1] && ackMap[p2]);
 
+  const ready = !!(ackMap[p1] && ackMap[p2]);
   if (!ready) return;
 
   room.phase = "playing";
@@ -179,7 +208,10 @@ function startPlayingIfReady(room, roomCode) {
   room.lastMoveAt = Date.now();
 
   sendGameState(roomCode);
-  setTurnTimer(roomCode);
+
+  // If starter is CPU, schedule CPU move; else start timer
+  if (room.currentTurn === CPU_ID) scheduleCpuTurn(roomCode);
+  else setTurnTimer(roomCode);
 }
 
 function sendGameState(roomCode) {
@@ -188,8 +220,11 @@ function sendGameState(roomCode) {
 
   const top = room.discardPile[room.discardPile.length - 1] || null;
 
+  // We only send game state to real sockets (humans)
   room.players.forEach((playerId, index) => {
     if (!playerId) return;
+    if (playerId === CPU_ID) return;
+
     const sock = io.sockets.sockets.get(playerId);
     if (!sock) return;
 
@@ -212,29 +247,268 @@ function sendGameState(roomCode) {
       opponentCardCount: opponentCount,
       discardTop: top,
       deckCount: room.deck.length,
+
       currentTurn: room.currentTurn,
       isGameOver: room.isGameOver,
       winner: room.winner,
       message: room.message,
+
+      opponentIsCpu: room.isCpuGame && opponentId === CPU_ID,
+      cpuDifficulty: room.cpuDifficulty || null,
     });
   });
 }
 
-function maybeApplyUnoPenalty(room, playerId, hand, afterPlayCount) {
-  const unoCalled = !!room.unoStatus[playerId];
-  room.unoStatus[playerId] = false;
+// ------------------ PLAY ACTION (shared human/CPU) ------------------
 
-  if (afterPlayCount === 1 && !unoCalled) {
-    for (let i = 0; i < 2; i++) {
-      const penaltyCard = drawOne(room);
-      if (penaltyCard) hand.push(penaltyCard);
+function applyPlay(room, roomCode, playerId, cardId, chosenColor) {
+  const hand = room.hands[playerId] || [];
+  const index = hand.findIndex((c) => c.id === cardId);
+  if (index === -1) return { ok: false, error: "Card not in hand." };
+
+  const card = hand[index];
+  const top = room.discardPile[room.discardPile.length - 1];
+
+  // Wilds require chosen color
+  if (card.type === "wild" || card.type === "wild4") {
+    const validColors = ["red", "yellow", "green", "blue"];
+    if (!chosenColor || !validColors.includes(chosenColor)) {
+      return { ok: false, error: "Must choose a color for wild." };
     }
-    room.message = "⚠️ Penalty! You did not yell UNO. You draw 2 cards.";
-    room.lastMoveAt = Date.now();
+    card.color = chosenColor;
+  } else {
+    if (!canPlay(card, top)) return { ok: false, error: "You can't play that card." };
   }
+
+  // Remove and discard
+  hand.splice(index, 1);
+  room.discardPile.push(card);
+
+  // Special effect
+  room.specialEffect = null;
+  if (card.type === "wild4") room.specialEffect = "wild4";
+
+  // UNO penalty
+  maybeApplyUnoPenalty(room, playerId, hand, hand.length);
+
+  // Win check
+  if (hand.length === 0) {
+    room.isGameOver = true;
+    room.winner = playerId;
+    room.phase = "gameover";
+    room.message = "🏁 Game over!";
+    room.lastMoveAt = Date.now();
+    clearTurnTimer(room);
+    sendGameState(roomCode);
+    return { ok: true, gameOver: true, played: card };
+  }
+
+  const opponentId = room.players.find((id) => id && id !== playerId);
+
+  // Action effects
+  if (card.type === "draw2" && opponentId) {
+    for (let i = 0; i < 2; i++) {
+      const drawn = drawOne(room);
+      if (drawn) room.hands[opponentId].push(drawn);
+    }
+  }
+  if (card.type === "wild4" && opponentId) {
+    for (let i = 0; i < 4; i++) {
+      const drawn = drawOne(room);
+      if (drawn) room.hands[opponentId].push(drawn);
+    }
+  }
+
+  // Turn logic: skip/reverse/draw2/wild4 -> same player again (your house rule)
+  const turnAgain =
+    card.type === "skip" ||
+    card.type === "reverse" ||
+    card.type === "draw2" ||
+    card.type === "wild4";
+
+  room.currentTurn = turnAgain ? playerId : (opponentId || playerId);
+
+  room.message = `Player played ${describeCard(card)}`;
+  room.lastMoveAt = Date.now();
+
+  sendGameState(roomCode);
+
+  // Next step: CPU turn or timer
+  if (room.currentTurn === CPU_ID) scheduleCpuTurn(roomCode);
+  else setTurnTimer(roomCode);
+
+  return { ok: true, gameOver: false, played: card };
 }
 
-// ---- SOCKET LOGIC ----
+// ------------------ CPU LOGIC ------------------
+
+function cpuPickColor(room) {
+  // pick most common color in CPU hand; fallback random
+  const hand = room.hands[CPU_ID] || [];
+  const counts = { red: 0, yellow: 0, green: 0, blue: 0 };
+  for (const c of hand) {
+    if (c.color && counts[c.color] != null) counts[c.color]++;
+  }
+  let best = "red";
+  for (const k of Object.keys(counts)) {
+    if (counts[k] > counts[best]) best = k;
+  }
+  if (counts[best] === 0) {
+    const colors = ["red", "yellow", "green", "blue"];
+    best = colors[Math.floor(Math.random() * colors.length)];
+  }
+  return best;
+}
+
+function cpuShouldCallUno(room) {
+  const diff = room.cpuDifficulty || "easy";
+  const hand = room.hands[CPU_ID] || [];
+
+  // CPU "calls UNO" when it has 2 cards and is about to play down to 1.
+  if (hand.length !== 2) return false;
+
+  const roll = Math.random();
+  if (diff === "hard") return true;
+  if (diff === "medium") return roll < 0.7;
+  return roll < 0.35; // easy sometimes forgets
+}
+
+function cpuChooseCard(room) {
+  const diff = room.cpuDifficulty || "easy";
+  const hand = room.hands[CPU_ID] || [];
+  const top = room.discardPile[room.discardPile.length - 1];
+
+  const playable = hand.filter((c) => canPlay(c, top));
+  if (playable.length === 0) return null;
+
+  // EASY: random playable
+  if (diff === "easy") {
+    return playable[Math.floor(Math.random() * playable.length)];
+  }
+
+  // MEDIUM/HARD: heuristics
+  // Prefer: wild4 > draw2 > skip/reverse > number; and prefer matching colors you have more of
+  const score = (card) => {
+    let s = 0;
+    if (card.type === "wild4") s += 50;
+    else if (card.type === "draw2") s += 30;
+    else if (card.type === "skip" || card.type === "reverse") s += 20;
+    else s += 10;
+
+    // prefer keeping control: if hard, slightly prefer action over wild (since wild forces choice)
+    if (diff === "hard" && card.type === "wild") s -= 2;
+
+    // prefer playing a color you have many of (keeps future plays easier)
+    if (card.color) {
+      const hand = room.hands[CPU_ID] || [];
+      const sameColor = hand.filter((c) => c.color === card.color).length;
+      s += sameColor;
+    }
+    // prefer getting rid of high-impact cards (hard)
+    if (diff === "hard" && card.type !== "number") s += 2;
+
+    return s + Math.random() * 0.5;
+  };
+
+  playable.sort((a, b) => score(b) - score(a));
+  return playable[0];
+}
+
+function cpuTakeTurn(roomCode) {
+  const room = rooms[roomCode];
+  if (!room || room.isGameOver) return;
+  if (room.phase !== "playing") return;
+  if (room.currentTurn !== CPU_ID) return;
+
+  // CPU may "yell UNO" (sets status so penalty won't hit)
+  if (cpuShouldCallUno(room)) {
+    room.unoStatus[CPU_ID] = true;
+    room.message = "UNO! CPU yelled UNO!";
+    room.lastMoveAt = Date.now();
+    sendGameState(roomCode);
+  }
+
+  const top = room.discardPile[room.discardPile.length - 1];
+  const hand = room.hands[CPU_ID] || [];
+
+  // Choose a playable card if possible
+  const chosen = cpuChooseCard(room);
+
+  if (chosen) {
+    const chosenColor =
+      (chosen.type === "wild" || chosen.type === "wild4") ? cpuPickColor(room) : null;
+
+    applyPlay(room, roomCode, CPU_ID, chosen.id, chosenColor);
+    return;
+  }
+
+  // Otherwise draw 1
+  const drawn = drawOne(room);
+  if (!drawn) {
+    room.message = "CPU tried to draw, but no cards left.";
+    room.lastMoveAt = Date.now();
+    sendGameState(roomCode);
+    room.currentTurn = room.players.find((id) => id && id !== CPU_ID) || CPU_ID;
+    if (room.currentTurn !== CPU_ID) setTurnTimer(roomCode);
+    return;
+  }
+
+  hand.push(drawn);
+
+  // Auto-play if it’s playable and not wild/wild4 (same as your rule)
+  const canAuto =
+    drawn.type !== "wild" && drawn.type !== "wild4" && canPlay(drawn, top);
+
+  if (canAuto) {
+    // remove then play
+    const idx = hand.findIndex((c) => c.id === drawn.id);
+    if (idx !== -1) hand.splice(idx, 1);
+
+    // push to discard and resolve via applyPlay-like behavior manually (simpler: call applyPlay by putting it back temporarily)
+    // We'll just directly play it by simulating it exists: easiest is to re-add then applyPlay
+    hand.push(drawn);
+    applyPlay(room, roomCode, CPU_ID, drawn.id, null);
+    return;
+  }
+
+  // If not playable, end CPU turn (pass turn)
+  room.message = "CPU drew a card.";
+  room.lastMoveAt = Date.now();
+  room.currentTurn = room.players.find((id) => id && id !== CPU_ID) || CPU_ID;
+
+  sendGameState(roomCode);
+
+  if (room.currentTurn !== CPU_ID) setTurnTimer(roomCode);
+}
+
+function scheduleCpuTurn(roomCode) {
+  const room = rooms[roomCode];
+  if (!room) return;
+
+  if (room.cpuTimer) {
+    clearTimeout(room.cpuTimer);
+    room.cpuTimer = null;
+  }
+
+  if (!room.isCpuGame) return;
+  if (room.phase !== "playing" || room.isGameOver) return;
+  if (room.currentTurn !== CPU_ID) return;
+
+  const diff = room.cpuDifficulty || "easy";
+  const delay =
+    diff === "hard" ? 700 :
+    diff === "medium" ? 900 :
+    1200;
+
+  room.cpuTimer = setTimeout(() => {
+    const r = rooms[roomCode];
+    if (!r) return;
+    r.cpuTimer = null;
+    cpuTakeTurn(roomCode);
+  }, delay);
+}
+
+// ------------------ SOCKETS ------------------
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
@@ -258,11 +532,15 @@ io.on("connection", (socket) => {
       unoStatus: {},
       specialEffect: null,
       turnTimeout: null,
+      cpuTimer: null,
 
       gameId: 0,
       phase: "waiting",
       lastMoveAt: Date.now(),
       dealAcks: {},
+
+      isCpuGame: false,
+      cpuDifficulty: null,
     };
 
     socket.join(code);
@@ -270,9 +548,54 @@ io.on("connection", (socket) => {
     sendGameState(code);
   });
 
+  // ✅ New: create a CPU room immediately
+  socket.on("createRoomCpu", ({ difficulty }) => {
+    const valid = ["easy", "medium", "hard"];
+    const cpuDifficulty = valid.includes(difficulty) ? difficulty : "easy";
+
+    let code;
+    do {
+      code = Math.floor(1000 + Math.random() * 9000).toString();
+    } while (rooms[code]);
+
+    rooms[code] = {
+      code,
+      players: [socket.id, CPU_ID],
+      hands: {},
+      deck: [],
+      discardPile: [],
+      currentTurn: null,
+      isGameOver: false,
+      winner: null,
+      message: "Starting CPU game...",
+      unoStatus: {},
+      specialEffect: null,
+      turnTimeout: null,
+      cpuTimer: null,
+
+      gameId: 0,
+      phase: "waiting",
+      lastMoveAt: Date.now(),
+      dealAcks: {},
+
+      isCpuGame: true,
+      cpuDifficulty,
+    };
+
+    socket.join(code);
+    socket.emit("roomCreated", { roomCode: code, youAre: "P1" });
+
+    // Start the game right away
+    dealInitialCards(rooms[code], code);
+  });
+
   socket.on("joinRoom", ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return socket.emit("errorMessage", "Room not found.");
+
+    // If it's a CPU room, block joining (you can change this later if you want)
+    if (room.isCpuGame) return socket.emit("errorMessage", "This room is vs CPU.");
+
     if (room.players[1]) return socket.emit("errorMessage", "Room is full.");
 
     room.players[1] = socket.id;
@@ -283,7 +606,7 @@ io.on("connection", (socket) => {
     dealInitialCards(room, roomCode);
   });
 
-  // ✅ client sends this after the deal animation finishes
+  // client sends after deal animation finishes
   socket.on("dealDone", ({ roomCode, gameId }) => {
     const room = rooms[roomCode];
     if (!room) return;
@@ -300,97 +623,19 @@ io.on("connection", (socket) => {
     const room = rooms[roomCode];
     if (!room || room.isGameOver) return;
 
-    if (room.phase !== "playing") {
-      socket.emit("errorMessage", "Still dealing…");
-      return;
-    }
+    if (room.phase !== "playing") return socket.emit("errorMessage", "Still dealing…");
+    if (socket.id !== room.currentTurn) return socket.emit("errorMessage", "Not your turn.");
 
-    if (socket.id !== room.currentTurn) {
-      socket.emit("errorMessage", "Not your turn.");
-      return;
-    }
-
-    const hand = room.hands[socket.id] || [];
-    const index = hand.findIndex((c) => c.id === cardId);
-    if (index === -1) return socket.emit("errorMessage", "Card not in hand.");
-
-    const card = hand[index];
-    const top = room.discardPile[room.discardPile.length - 1];
-
-    if (card.type === "wild" || card.type === "wild4") {
-      const validColors = ["red", "yellow", "green", "blue"];
-      if (!chosenColor || !validColors.includes(chosenColor)) {
-        return socket.emit("errorMessage", "You must choose a color for a wild card.");
-      }
-      card.color = chosenColor;
-    } else {
-      if (!canPlay(card, top)) return socket.emit("errorMessage", "You can't play that card.");
-    }
-
-    hand.splice(index, 1);
-    room.discardPile.push(card);
-
-    room.specialEffect = null;
-    if (card.type === "wild4") room.specialEffect = "wild4";
-
-    maybeApplyUnoPenalty(room, socket.id, hand, hand.length);
-
-    if (hand.length === 0) {
-      room.isGameOver = true;
-      room.winner = socket.id;
-      room.phase = "gameover";
-      room.message = "🏁 Game over!";
-      room.lastMoveAt = Date.now();
-
-      if (room.turnTimeout) {
-        clearTimeout(room.turnTimeout);
-        room.turnTimeout = null;
-      }
-
-      sendGameState(roomCode);
-      return;
-    }
-
-    const opponentId = room.players.find((id) => id && id !== socket.id);
-
-    if (card.type === "draw2" && opponentId) {
-      for (let i = 0; i < 2; i++) {
-        const drawn = drawOne(room);
-        if (drawn) room.hands[opponentId].push(drawn);
-      }
-    }
-
-    if (card.type === "wild4" && opponentId) {
-      for (let i = 0; i < 4; i++) {
-        const drawn = drawOne(room);
-        if (drawn) room.hands[opponentId].push(drawn);
-      }
-    }
-
-    const turnAgain =
-      card.type === "skip" ||
-      card.type === "reverse" ||
-      card.type === "draw2" ||
-      card.type === "wild4";
-
-    room.currentTurn = turnAgain ? socket.id : (opponentId || socket.id);
-
-    room.message = `Player played ${describeCard(card)}`;
-    room.lastMoveAt = Date.now();
-
-    sendGameState(roomCode);
-    setTurnTimer(roomCode);
+    // Human play
+    const res = applyPlay(room, roomCode, socket.id, cardId, chosenColor);
+    if (!res.ok) socket.emit("errorMessage", res.error || "Invalid play.");
   });
 
   socket.on("drawCard", ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || room.isGameOver) return;
 
-    if (room.phase !== "playing") {
-      socket.emit("errorMessage", "Still dealing…");
-      return;
-    }
-
+    if (room.phase !== "playing") return socket.emit("errorMessage", "Still dealing…");
     if (socket.id !== room.currentTurn) return socket.emit("errorMessage", "Not your turn.");
 
     room.unoStatus[socket.id] = false;
@@ -410,64 +655,29 @@ io.on("connection", (socket) => {
 
     const top = room.discardPile[room.discardPile.length - 1];
 
-    const canAutoPlay =
+    const canAuto =
       drawn.type !== "wild" && drawn.type !== "wild4" && canPlay(drawn, top);
 
-    if (canAutoPlay) {
+    if (canAuto) {
+      // remove then play (use applyPlay)
       const idx = hand.findIndex((c) => c.id === drawn.id);
       if (idx !== -1) hand.splice(idx, 1);
+      hand.push(drawn);
 
-      room.discardPile.push(drawn);
-
-      maybeApplyUnoPenalty(room, socket.id, hand, hand.length);
-
-      if (hand.length === 0) {
-        room.isGameOver = true;
-        room.winner = socket.id;
-        room.phase = "gameover";
-        room.message = "🏁 Game over!";
-        room.lastMoveAt = Date.now();
-
-        if (room.turnTimeout) {
-          clearTimeout(room.turnTimeout);
-          room.turnTimeout = null;
-        }
-
-        sendGameState(roomCode);
-        return;
-      }
-
-      const opponentId = room.players.find((id) => id && id !== socket.id);
-
-      if (drawn.type === "draw2" && opponentId) {
-        for (let i = 0; i < 2; i++) {
-          const extra = drawOne(room);
-          if (extra) room.hands[opponentId].push(extra);
-        }
-      }
-
-      const turnAgain =
-        drawn.type === "skip" ||
-        drawn.type === "reverse" ||
-        drawn.type === "draw2";
-
-      room.currentTurn = turnAgain ? socket.id : (opponentId || socket.id);
-      room.message = turnAgain
-        ? `You drew and auto-played ${describeCard(drawn)}. You go again.`
-        : `You drew and auto-played ${describeCard(drawn)}.`;
-
-      room.lastMoveAt = Date.now();
-      sendGameState(roomCode);
-      setTurnTimer(roomCode);
+      const res = applyPlay(room, roomCode, socket.id, drawn.id, null);
+      if (!res.ok) socket.emit("errorMessage", res.error || "Auto-play error.");
       return;
     }
 
+    // pass turn
     room.message = "Player drew a card.";
-    room.currentTurn = room.players.find((id) => id && id !== socket.id) || socket.id;
     room.lastMoveAt = Date.now();
+    room.currentTurn = room.players.find((id) => id && id !== socket.id) || socket.id;
 
     sendGameState(roomCode);
-    setTurnTimer(roomCode);
+
+    if (room.currentTurn === CPU_ID) scheduleCpuTurn(roomCode);
+    else setTurnTimer(roomCode);
   });
 
   socket.on("yellUno", ({ roomCode }) => {
@@ -496,9 +706,10 @@ io.on("connection", (socket) => {
         room.phase = "gameover";
         room.lastMoveAt = Date.now();
 
-        if (room.turnTimeout) {
-          clearTimeout(room.turnTimeout);
-          room.turnTimeout = null;
+        clearTurnTimer(room);
+        if (room.cpuTimer) {
+          clearTimeout(room.cpuTimer);
+          room.cpuTimer = null;
         }
 
         sendGameState(code);
