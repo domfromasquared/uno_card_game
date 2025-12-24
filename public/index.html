@@ -9,9 +9,6 @@
     :root{
       --bg:#16171b;
       --panel:#1f2127;
-      --accent:#f97316;
-      --good:#22c55e;
-      --bad:#ef4444;
       --blue:#3b82f6;
     }
 
@@ -88,6 +85,22 @@
       align-items:center;
       justify-content:center;
       background:rgba(255,255,255,0.02);
+      position:relative;
+    }
+
+    /* little "flash" when top card changes */
+    .discard-slot.flash::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      border-radius:16px;
+      background:rgba(255,255,255,0.10);
+      animation:discardFlash 240ms ease;
+      pointer-events:none;
+    }
+    @keyframes discardFlash{
+      from{opacity:1;}
+      to{opacity:0;}
     }
 
     .deck-slot{
@@ -120,7 +133,6 @@
     .color-btn.green{background:#22c55e;}
     .color-btn.blue{background:#3b82f6;}
 
-    /* Hover uses luminance + matching glow (no blue hover) */
     .color-btn:hover{
       transform:translateY(-1px) scale(1.06);
       filter:brightness(1.18) saturate(1.12);
@@ -143,7 +155,6 @@
       transition:transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease, opacity 0.15s ease;
     }
 
-    /* Big discard top card */
     .card.large{
       width:160px;
       height:240px;
@@ -151,6 +162,15 @@
       font-size:2.2rem;
       border-width:4px;
       box-shadow:0 14px 30px rgba(0,0,0,0.55);
+    }
+
+    /* tiny pop-in for discard top changes */
+    .card.large.pop{
+      animation:popIn 220ms ease;
+    }
+    @keyframes popIn{
+      from{transform:translateY(-6px) scale(0.98); opacity:0.6;}
+      to{transform:translateY(0) scale(1); opacity:1;}
     }
 
     .card.player-card{cursor:pointer;}
@@ -168,6 +188,7 @@
       background: radial-gradient(circle at 10% 20%, #ef4444 0, #eab308 30%, #22c55e 60%, #3b82f6 100%);
       border-color:#f9fafb;
     }
+
     .card.back{
       background: linear-gradient(135deg, #111827, #020617);
       border-color:#e5e7eb;color:#e5e7eb;font-size:1rem;letter-spacing:1px;cursor:default;
@@ -177,7 +198,6 @@
       content:"";position:absolute;inset:5px;border-radius:8px;border:2px solid #e5e7eb;opacity:0.75;
     }
 
-    /* Hands + snake timer ring */
     .hand{margin-bottom:14px;}
     .hand h2{margin:10px 0 6px;font-size:1rem;display:flex;align-items:center;justify-content:space-between;}
 
@@ -196,20 +216,17 @@
       padding:10px;
       border:3px solid rgba(255,255,255,0.10);
       background: rgba(255,255,255,0.015);
-      transition: border-color 0.12s ease, box-shadow 0.12s ease;
       --p: 0;   /* 0..1 remaining fraction */
       --h: 120; /* hue (green->red) */
     }
 
-    /* "Snake" ring that shrinks as --p decreases */
+    /* Snake ring that shrinks as --p decreases */
     .hand-frame.active::before{
       content:"";
       position:absolute;
       inset:-8px;
       border-radius:22px;
       padding:8px;
-
-      /* Only the "snake" segment is visible, rest is transparent */
       background:
         conic-gradient(
           from -90deg,
@@ -217,18 +234,28 @@
           rgba(0,0,0,0) calc(var(--p) * 1turn) 1turn
         );
 
-      /* Punch a hole so it's a ring */
       -webkit-mask:
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
 
-      /* IMPORTANT: don't block clicks */
       pointer-events:none;
-
       filter: drop-shadow(0 0 10px hsla(var(--h), 92%, 55%, 0.22));
     }
+
+    /* OPTIONAL: prevent user input during reveal playback */
+    .input-locked{
+      opacity:0.98;
+    }
+    .input-lock-overlay{
+      display:none;
+      position:absolute; inset:0;
+      background: rgba(0,0,0,0.00);
+      pointer-events:auto; /* blocks clicks */
+      z-index:999;
+    }
+    .input-locked .input-lock-overlay{display:block;}
 
     @keyframes wild4Shake{
       0%{transform:translate(0,0) scale(1);}
@@ -254,6 +281,8 @@
 
 <body>
   <div class="game" id="gameRoot">
+    <div class="input-lock-overlay" id="inputLockOverlay"></div>
+
     <h1>Online UNO (2-Player)</h1>
 
     <div class="top-bar">
@@ -281,7 +310,7 @@
     <div class="board">
       <div class="pile">
         <div class="pile-title">Draw pile</div>
-        <div class="deck-slot" id="deckVisual">
+        <div class="deck-slot">
           <button id="drawButton" disabled>Draw</button>
         </div>
         <div id="deckCount"></div>
@@ -339,6 +368,7 @@
       const roomCodeLabel = document.getElementById("roomCodeLabel");
       const youAreLabel = document.getElementById("youAreLabel");
       const opponentLabel = document.getElementById("opponentLabel");
+      const inputLockOverlay = document.getElementById("inputLockOverlay");
 
       const deckCountEl = document.getElementById("deckCount");
       const discardTopEl = document.getElementById("discardTop");
@@ -408,6 +438,21 @@
 
       const TURN_SECONDS = 20;
 
+      // ✅ NEW: reveal queue
+      const stateQueue = [];
+      let processingQueue = false;
+      let lastRenderedDiscardId = null;
+
+      // Tweak these
+      const DISCARD_REVEAL_MS = 450;     // how long to hold each new discard
+      const MIN_QUEUE_DELAY_MS = 0;      // delay if discard didn't change
+
+      function lockInput(isLocked){
+        gameRoot.classList.toggle("input-locked", !!isLocked);
+      }
+
+      function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
       // sorting
       const colorOrder = { red:0, yellow:1, green:2, blue:3 };
       const typeOrder  = { number:0, skip:1, reverse:2, draw2:3, wild:4, wild4:5 };
@@ -475,6 +520,9 @@
           if(clickable){
             el.classList.add("player-card");
             el.addEventListener("click", async ()=>{
+              // don't allow clicks while reveal playback is happening
+              if (processingQueue) return;
+
               await unlockAudioOnce();
               if(!currentRoomCode) return;
 
@@ -515,7 +563,7 @@
       }
 
       function setActiveSnake(frameEl, timerEl, remaining){
-        const pct = Math.max(0, Math.min(1, remaining / TURN_SECONDS)); // 1->full time
+        const pct = Math.max(0, Math.min(1, remaining / TURN_SECONDS));
         const hue = 120 * pct; // green->red
         frameEl.classList.add("active");
         frameEl.style.setProperty("--p", pct.toFixed(4));
@@ -553,11 +601,17 @@
         }, 120);
       }
 
-      async function updateUI(state){
-        latestState = state;
-        if(!state) return;
+      function flashDiscard(){
+        discardTopEl.classList.remove("flash");
+        void discardTopEl.offsetWidth;
+        discardTopEl.classList.add("flash");
+        setTimeout(()=>discardTopEl.classList.remove("flash"), 260);
+      }
 
-        // ✅ CLICK FIX: ensure we always have the right id
+      async function renderStateNow(state){
+        latestState = state;
+
+        // safety: ensure socket id is available
         if(!mySocketId && socket.id) mySocketId = socket.id;
 
         currentRoomCode = state.roomCode;
@@ -569,8 +623,19 @@
           : "Human";
 
         // Discard big
+        const discardId = state.discardTop ? state.discardTop.id : null;
+        const discardChanged = discardId !== lastRenderedDiscardId;
+
         discardTopEl.innerHTML = "";
-        if(state.discardTop) discardTopEl.appendChild(renderCard(state.discardTop, true));
+        if(state.discardTop){
+          const big = renderCard(state.discardTop, true);
+          if(discardChanged) big.classList.add("pop");
+          discardTopEl.appendChild(big);
+        }
+        if(discardChanged) {
+          flashDiscard();
+          lastRenderedDiscardId = discardId;
+        }
 
         deckCountEl.textContent =
           state.deckCount != null ? `${state.deckCount} card${state.deckCount===1?"":"s"} left` : "";
@@ -582,6 +647,7 @@
         const canInteract = state.phase === "playing" && !state.isGameOver;
         const isMyTurn = canInteract && (state.currentTurn === mySocketId);
 
+        // during reveal playback, inputs are locked anyway; this ensures buttons match state too
         drawButton.disabled = !isMyTurn;
         unoButton.disabled = !(isMyTurn && myCount > 0 && myCount <= 2);
 
@@ -594,7 +660,7 @@
         renderOpponentBacks(oppCount);
         renderMyHand(myHandSorted, isMyTurn);
 
-        // Wild4 effect
+        // Wild4 effect (only when specialEffect says so)
         const topId = state.discardTop ? state.discardTop.id : null;
         const effectKey = `${state.gameId}|${topId}|${state.specialEffect || ""}`;
         if(effectKey !== lastEffectKey){
@@ -610,13 +676,11 @@
         if(state.gameId != null && state.gameId !== lastGameId){
           lastGameId = state.gameId;
           dealDoneSentForGameId = null;
-
           hideColorPicker();
 
           await unlockAudioOnce();
           playSound(soundNewHand);
 
-          // ack immediately (if you have deal animation later, emit at end)
           if(currentRoomCode && dealDoneSentForGameId !== state.gameId){
             dealDoneSentForGameId = state.gameId;
             socket.emit("dealDone", { roomCode: currentRoomCode, gameId: state.gameId });
@@ -639,6 +703,36 @@
         lastWinner = state.winner || null;
 
         startCountdownLoop();
+
+        return { discardChanged };
+      }
+
+      async function processStateQueue(){
+        if(processingQueue) return;
+        processingQueue = true;
+        lockInput(true);
+
+        try{
+          while(stateQueue.length){
+            const next = stateQueue.shift();
+            const { discardChanged } = await renderStateNow(next);
+
+            // Only delay when the discard changes (that’s the “play reveal”)
+            const delay = discardChanged ? DISCARD_REVEAL_MS : MIN_QUEUE_DELAY_MS;
+            if(delay > 0) await sleep(delay);
+          }
+        } finally {
+          processingQueue = false;
+          lockInput(false);
+        }
+      }
+
+      function enqueueState(state){
+        // collapse super-old intermediate states if queue gets huge
+        if(stateQueue.length > 8) stateQueue.splice(0, stateQueue.length - 6);
+
+        stateQueue.push(state);
+        processStateQueue();
       }
 
       // UI events
@@ -660,12 +754,14 @@
       });
 
       drawButton.addEventListener("click", async ()=>{
+        if(processingQueue) return;
         await unlockAudioOnce();
         if(!currentRoomCode) return;
         socket.emit("drawCard", { roomCode: currentRoomCode });
       });
 
       unoButton.addEventListener("click", async ()=>{
+        if(processingQueue) return;
         await unlockAudioOnce();
         if(!currentRoomCode) return;
         socket.emit("yellUno", { roomCode: currentRoomCode });
@@ -673,6 +769,7 @@
 
       colorButtons.forEach(btn=>{
         btn.addEventListener("click", async ()=>{
+          if(processingQueue) return;
           await unlockAudioOnce();
           const color = btn.dataset.color;
           if(!currentRoomCode || !pendingWildCardId) return;
@@ -687,15 +784,21 @@
         currentRoomCode = roomCode;
         roomCodeLabel.textContent = roomCode;
         youAreLabel.textContent = youAre;
-        // ✅ also set here (extra safety)
         if(socket.id) mySocketId = socket.id;
 
         showMessage(`Room created. Code: ${roomCode}`);
         lastGameId = null;
         dealDoneSentForGameId = null;
+
+        // reset reveal tracking
+        stateQueue.length = 0;
+        processingQueue = false;
+        lockInput(false);
+        lastRenderedDiscardId = null;
       });
 
-      socket.on("gameState", (state)=> updateUI(state));
+      // ✅ IMPORTANT: enqueue states instead of rendering immediately
+      socket.on("gameState", (state)=> enqueueState(state));
       socket.on("errorMessage", (msg)=> showMessage(msg));
 
       window.addEventListener("beforeunload", stopCountdownLoop);
